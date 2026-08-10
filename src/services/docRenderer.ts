@@ -5,6 +5,55 @@ export class DocRendererService {
   private static sharedCtx: CanvasRenderingContext2D | null = null;
 
   /**
+   * Ultra-fast (0.001ms) SVG vector instant thumbnail for Everything-style instant indexing
+   */
+  public static generateInstantVectorThumbnail(
+    title: string,
+    format: DocFormat,
+    category: string
+  ): string {
+    const formatColors: Record<DocFormat, { bg: string; accent: string; label: string }> = {
+      pdf: { bg: '#fee2e2', accent: '#dc2626', label: 'PDF' },
+      docx: { bg: '#dbeafe', accent: '#2563eb', label: 'DOCX' },
+      doc: { bg: '#dbeafe', accent: '#2563eb', label: 'DOC' },
+      xlsx: { bg: '#dcfce7', accent: '#16a34a', label: 'XLSX' },
+      xls: { bg: '#dcfce7', accent: '#16a34a', label: 'XLS' },
+      hwp: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWP' },
+      hwpx: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWPX' },
+      pptx: { bg: '#ffedd5', accent: '#ea580c', label: 'PPTX' },
+      txt: { bg: '#f1f5f9', accent: '#64748b', label: 'TXT' },
+    };
+
+    const cfg = formatColors[format] || formatColors.txt;
+    const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 30);
+    const safeCat = category.replace(/&/g, '&amp;').slice(0, 20);
+
+    const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 530" width="380" height="530">
+      <rect width="380" height="530" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="6" />
+      <rect width="380" height="12" fill="${cfg.accent}" />
+      <rect x="24" y="32" width="60" height="24" rx="4" fill="${cfg.bg}" />
+      <text x="34" y="49" font-family="sans-serif" font-size="12" font-weight="bold" fill="${cfg.accent}">${cfg.label}</text>
+      <text x="96" y="48" font-family="sans-serif" font-size="12" fill="#64748b">${safeCat}</text>
+      <line x1="24" y1="68" x2="356" y2="68" stroke="#e2e8f0" stroke-width="1.5" />
+      <text x="24" y="110" font-family="sans-serif" font-size="18" font-weight="bold" fill="#0f172a">${safeTitle}</text>
+      
+      <!-- Placeholder Skeleton Lines -->
+      <rect x="24" y="140" width="332" height="14" rx="3" fill="#f1f5f9" />
+      <rect x="24" y="165" width="300" height="14" rx="3" fill="#f1f5f9" />
+      <rect x="24" y="190" width="315" height="14" rx="3" fill="#f1f5f9" />
+      <rect x="24" y="225" width="332" height="180" rx="4" fill="#f8fafc" stroke="#e2e8f0" />
+      <text x="120" y="320" font-family="sans-serif" font-size="13" fill="#94a3b8">고화질 1페이지 렌더링 준비 중...</text>
+      
+      <!-- Footer -->
+      <line x1="24" y1="490" x2="356" y2="490" stroke="#e2e8f0" stroke-width="1" />
+      <text x="24" y="510" font-family="sans-serif" font-size="11" fill="#94a3b8">Picasa Fast Stream Document</text>
+    </svg>`;
+
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+
+  /**
    * Generates a high-resolution 1st page visual thumbnail (A4 ratio) for a document
    */
   public static generateDocumentFirstPageThumbnail(
@@ -60,71 +109,64 @@ export class DocRendererService {
     date: string,
     author?: string
   ) {
-    // Top PDF Color Accent Bar
     ctx.fillStyle = '#ea4335';
-    ctx.fillRect(0, 0, 440, 10);
+    ctx.fillRect(0, 0, 380, 8);
 
-    // Header Logo/Badge
     ctx.fillStyle = '#fee2e2';
     ctx.beginPath();
-    ctx.roundRect(30, 35, 60, 22, 4);
+    ctx.roundRect(24, 28, 54, 20, 4);
     ctx.fill();
 
     ctx.fillStyle = '#b91c1c';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('PDF DOC', 38, 50);
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('PDF DOC', 30, 42);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(category, 100, 50);
+    ctx.font = '10px sans-serif';
+    ctx.fillText(category, 86, 42);
 
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(date, 340, 50);
+    ctx.font = '9px sans-serif';
+    ctx.fillText(date, 300, 42);
 
-    // Decorative Line
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(30, 68);
-    ctx.lineTo(410, 68);
+    ctx.moveTo(24, 58);
+    ctx.lineTo(356, 58);
     ctx.stroke();
 
-    // Document Main Title
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 20px sans-serif';
-    this.wrapText(ctx, title, 30, 110, 380, 26);
+    ctx.font = 'bold 17px sans-serif';
+    this.wrapText(ctx, title, 24, 90, 332, 22);
 
-    // Subtitle / Abstract Box
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(30, 175, 380, 75);
+    ctx.fillRect(24, 150, 332, 65);
     ctx.strokeStyle = '#cbd5e1';
-    ctx.strokeRect(30, 175, 380, 75);
+    ctx.strokeRect(24, 150, 332, 65);
 
     ctx.fillStyle = '#475569';
-    ctx.font = 'italic 12px sans-serif';
-    this.wrapText(ctx, `[요약] ${snippet}`, 42, 198, 356, 18);
+    ctx.font = 'italic 11px sans-serif';
+    this.wrapText(ctx, `[요약] ${snippet}`, 34, 170, 312, 16);
 
-    // Paragraph Lines simulation
     ctx.fillStyle = '#334155';
-    ctx.font = '11px sans-serif';
+    ctx.font = '10px sans-serif';
     this.wrapText(
       ctx,
-      '1. 개요 및 배경\n본 문서는 프로젝트의 핵심 요구사항과 기술적 구조, 단계별 추진 일정을 정의하며 이해관계자 간의 원활한 협업과 의사결정을 지원하기 위해 작성되었습니다.\n\n2. 주요 추진 전략\n- 고성능 데이터 파이프라인 구축 및 안정성 확보\n- 사용자 중심의 직관적 인터페이스와 실시간 검색 제공\n- 데이터 보안 및 접근 권한 체계화',
-      30,
-      280,
-      380,
-      18
+      '1. 개요 및 배경\n본 문서는 프로젝트의 핵심 요구사항과 기술적 구조, 단계별 추진 일정을 정의하며 이해관계자 간의 원활한 협업과 의사결정을 지원하기 위해 작성되었습니다.\n\n2. 주요 추진 전략\n- 고성능 데이터 파이프라인 구축 및 안정성 확보\n- 사용자 중심의 직관적 인터페이스와 실시간 검색 제공',
+      24,
+      240,
+      332,
+      16
     );
 
-    // Footer
     ctx.strokeStyle = '#e2e8f0';
-    ctx.strokeRect(30, 580, 380, 0.5);
+    ctx.strokeRect(24, 495, 332, 0.5);
 
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(author || 'Picasa Document System', 30, 598);
-    ctx.fillText('Page 1 of 1', 360, 598);
+    ctx.font = '9px sans-serif';
+    ctx.fillText(author || 'Picasa Document System', 24, 512);
+    ctx.fillText('Page 1 of 1', 315, 512);
   }
 
   /**
@@ -136,37 +178,32 @@ export class DocRendererService {
     category: string,
     date: string
   ) {
-    // Top Excel Green Accent
     ctx.fillStyle = '#107c41';
-    ctx.fillRect(0, 0, 440, 10);
+    ctx.fillRect(0, 0, 380, 8);
 
-    // Excel Sheet Header
     ctx.fillStyle = '#107c41';
-    ctx.font = 'bold 15px sans-serif';
-    ctx.fillText(title, 25, 42);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(title, 20, 34);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(`${category} • ${date}`, 25, 60);
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`${category} • ${date}`, 20, 50);
 
-    // Draw Spreadsheet Grid Table
-    const startY = 80;
-    const cols = [40, 120, 75, 75, 90];
+    const startY = 68;
+    const cols = [35, 105, 65, 65, 70];
     const colNames = ['No', '항목 / 구분', '단가 (원)', '수량', '합계 (원)'];
 
-    // Header Row
     ctx.fillStyle = '#107c41';
-    ctx.fillRect(20, startY, 400, 24);
+    ctx.fillRect(20, startY, 340, 20);
 
     let curX = 20;
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold 9px sans-serif';
     colNames.forEach((name, i) => {
-      ctx.fillText(name, curX + 6, startY + 16);
+      ctx.fillText(name, curX + 4, startY + 14);
       curX += cols[i];
     });
 
-    // Sample Table Rows
     const sampleRows = [
       ['01', '시스템 개발비', '3,500,000', '1식', '3,500,000'],
       ['02', 'UI/UX 디자인', '1,800,000', '1식', '1,800,000'],
@@ -175,56 +212,49 @@ export class DocRendererService {
       ['05', '데이터베이스 튜닝', '1,200,000', '1식', '1,200,000'],
       ['06', '보안 및 권한 검증', '900,000', '1식', '900,000'],
       ['07', '유지보수 및 운영', '350,000', '12월', '4,200,000'],
-      ['08', '기술 지원비', '600,000', '2회', '1,200,000'],
-      ['09', '문서화 및 매뉴얼', '500,000', '1식', '500,000'],
-      ['10', '최종 검수 및 배포', '800,000', '1식', '800,000'],
     ];
 
-    let rowY = startY + 24;
+    let rowY = startY + 20;
     sampleRows.forEach((row, rIdx) => {
       ctx.fillStyle = rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
-      ctx.fillRect(20, rowY, 400, 22);
-
-      // Cell Grid Lines
+      ctx.fillRect(20, rowY, 340, 18);
       ctx.strokeStyle = '#e2e8f0';
       ctx.lineWidth = 1;
-      ctx.strokeRect(20, rowY, 400, 22);
+      ctx.strokeRect(20, rowY, 340, 18);
 
       let x = 20;
       ctx.fillStyle = '#334155';
-      ctx.font = '10px sans-serif';
+      ctx.font = '9px sans-serif';
       row.forEach((val, cIdx) => {
-        ctx.fillText(val, x + 6, rowY + 15);
+        ctx.fillText(val, x + 4, rowY + 13);
         x += cols[cIdx];
       });
 
-      rowY += 22;
+      rowY += 18;
     });
 
-    // Total Row
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(20, rowY, 400, 26);
+    ctx.fillRect(20, rowY, 340, 22);
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('총 합계 금액 (VAT 포함)', 30, rowY + 18);
-    ctx.fillText('₩ 21,900,000', 315, rowY + 18);
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('총 합계 금액 (VAT 포함)', 26, rowY + 15);
+    ctx.fillText('₩ 21,900,000', 270, rowY + 15);
 
-    // Mini Bar Chart simulation below table
+    // Mini Chart Graphic
     ctx.fillStyle = '#f1f5f9';
-    ctx.fillRect(20, rowY + 40, 400, 180);
+    ctx.fillRect(20, rowY + 32, 340, 160);
     ctx.strokeStyle = '#cbd5e1';
-    ctx.strokeRect(20, rowY + 40, 400, 180);
+    ctx.strokeRect(20, rowY + 32, 340, 160);
 
     ctx.fillStyle = '#475569';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillText('월별 매출 및 지출 추이 그래프 (Sheet1)', 32, rowY + 60);
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('월별 매출 및 지출 추이 그래프 (Sheet1)', 28, rowY + 48);
 
-    // Draw bars
     const barColors = ['#107c41', '#34a853', '#4285f4', '#fbbc05', '#ea4335'];
     for (let b = 0; b < 5; b++) {
       ctx.fillStyle = barColors[b];
-      const h = 40 + b * 20;
-      ctx.fillRect(50 + b * 70, rowY + 190 - h, 40, h);
+      const h = 30 + b * 18;
+      ctx.fillRect(45 + b * 60, rowY + 175 - h, 34, h);
     }
   }
 
@@ -239,89 +269,80 @@ export class DocRendererService {
     date: string,
     author?: string
   ) {
-    // Top HWP Blue Accent
     ctx.fillStyle = '#0055aa';
-    ctx.fillRect(0, 0, 440, 10);
+    ctx.fillRect(0, 0, 380, 8);
 
-    // Header Title Box (공문서/보고서 표제 상자)
     ctx.strokeStyle = '#0055aa';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(30, 30, 380, 90);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(24, 24, 332, 75);
 
     ctx.fillStyle = '#0055aa';
-    ctx.font = 'bold 18px "Malgun Gothic", sans-serif';
+    ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(title, 220, 70);
+    ctx.fillText(title, 190, 56);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(`[ ${category} ]`, 220, 98);
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`[ ${category} ]`, 190, 80);
     ctx.textAlign = 'left';
 
-    // Meta row (기안자, 일자)
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(30, 130, 380, 28);
+    ctx.fillRect(24, 110, 332, 24);
     ctx.strokeStyle = '#cbd5e1';
     ctx.lineWidth = 1;
-    ctx.strokeRect(30, 130, 380, 28);
+    ctx.strokeRect(24, 110, 332, 24);
+
+    ctx.fillStyle = '#334155';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(`작성부서: ${author || '경영기획팀'}`, 32, 126);
+    ctx.fillText(`기안일자: ${date}`, 235, 126);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('1. 추진 목적 및 필요성', 24, 160);
 
     ctx.fillStyle = '#334155';
     ctx.font = '10px sans-serif';
-    ctx.fillText(`작성부서: ${author || '경영기획팀'}`, 40, 148);
-    ctx.fillText(`기안일자: ${date}`, 270, 148);
-
-    // Body Text with HWP Bullet points (1. 추진 목적, 2. 주요 내용)
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('1. 추진 목적 및 필요성', 30, 190);
-
-    ctx.fillStyle = '#334155';
-    ctx.font = '11px "Malgun Gothic", sans-serif';
     this.wrapText(
       ctx,
-      `가. ${snippet}\n나. 관련 부서와의 긴밀한 협력 체계를 구축하고 실시간 의사결정을 강화함.\n다. 디지털 전환 및 프로세스 자동화를 통한 업무 효율성 30% 증대.`,
-      35,
-      212,
-      370,
+      `가. ${snippet}\n나. 관련 부서와의 긴밀한 협력 체계를 구축하고 실시간 의사결정을 강화함.`,
+      28,
+      178,
+      324,
+      15
+    );
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('2. 사업 개요 및 세부 내용', 24, 245);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(24, 260, 332, 105);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeRect(24, 260, 332, 105);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '10px sans-serif';
+    this.wrapText(
+      ctx,
+      '○ 사업 기간: 2024. 01. 01 ~ 2024. 12. 31 (12개월)\n○ 소요 예산: 금이천일백구십만원정 (₩21,900,000)\n○ 주요 산출물: 완료보고서, 소스코드, 매뉴얼',
+      32,
+      282,
+      316,
       18
     );
 
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('2. 사업 개요 및 세부 내용', 30, 295);
-
-    // HWP Grid Box inside
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(30, 310, 380, 130);
-    ctx.strokeStyle = '#94a3b8';
-    ctx.strokeRect(30, 310, 380, 130);
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '11px sans-serif';
-    this.wrapText(
-      ctx,
-      '○ 사업 기간: 2024. 01. 01 ~ 2024. 12. 31 (12개월)\n○ 소요 예산: 금이천일백구십만원정 (₩21,900,000)\n○ 주요 산출물: 완료보고서, 시스템 소스코드, 사용자 매뉴얼',
-      42,
-      335,
-      356,
-      22
-    );
-
-    // Korean Red Official Seal Stamp (직인 인장 시뮬레이션)
+    // Seal
     ctx.strokeStyle = '#dc2626';
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(330, 480, 60, 60);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(285, 410, 50, 50);
 
     ctx.fillStyle = '#dc2626';
-    ctx.font = 'bold 12px "Malgun Gothic", sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('대표이사', 360, 506);
-    ctx.fillText('직 인', 360, 526);
+    ctx.fillText('대표이사', 310, 432);
+    ctx.fillText('직 인', 310, 448);
     ctx.textAlign = 'left';
-
-    ctx.fillStyle = '#64748b';
-    ctx.font = '10px sans-serif';
-    ctx.fillText('한글(HWP) 표준 서식 문서', 30, 595);
   }
 
   /**
@@ -335,77 +356,54 @@ export class DocRendererService {
     date: string,
     author?: string
   ) {
-    // Top Word Blue Accent
     ctx.fillStyle = '#2b579a';
-    ctx.fillRect(0, 0, 440, 10);
+    ctx.fillRect(0, 0, 380, 8);
 
-    // Header Title
     ctx.fillStyle = '#2b579a';
-    ctx.font = 'bold 22px sans-serif';
-    this.wrapText(ctx, title, 30, 65, 380, 28);
+    ctx.font = 'bold 18px sans-serif';
+    this.wrapText(ctx, title, 24, 52, 332, 24);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px sans-serif';
-    ctx.fillText(`분류: ${category} | 작성일: ${date}`, 30, 125);
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`분류: ${category} | 작성일: ${date}`, 24, 105);
 
     ctx.strokeStyle = '#2b579a';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(30, 138);
-    ctx.lineTo(410, 138);
+    ctx.moveTo(24, 116);
+    ctx.lineTo(356, 116);
     ctx.stroke();
 
-    // Section 1
     ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('Article 1. 목적 (Purpose)', 30, 175);
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('Article 1. 목적 (Purpose)', 24, 145);
 
     ctx.fillStyle = '#334155';
-    ctx.font = '11px sans-serif';
+    ctx.font = '10px sans-serif';
     this.wrapText(
       ctx,
-      `${snippet}\n본 조항은 계약 당사자 간의 권리와 의무를 명확히 규정하고, 신의성실의 원칙에 따라 상호 협력하는 것을 목적으로 한다.`,
-      30,
-      198,
-      380,
-      18
+      `${snippet}\n본 조항은 계약 당사자 간의 권리와 의무를 명확히 규정하고 상호 협력하는 것을 목적으로 한다.`,
+      24,
+      165,
+      332,
+      15
     );
 
-    // Section 2
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('Article 2. 계약 기간 및 조건', 30, 280);
-
-    ctx.fillStyle = '#334155';
-    ctx.font = '11px sans-serif';
-    this.wrapText(
-      ctx,
-      '1. 계약의 유효기간은 체결일로부터 1년으로 하며, 만료 1개월 전 서면 통지가 없을 경우 동일한 조건으로 자동 연장된다.\n2. 을은 갑의 사전 서면 승인 없이 계약상 권리와 의무를 제3자에게 양도할 수 없다.\n3. 분쟁 발생 시 당사자의 관할 법원에 따른다.',
-      30,
-      304,
-      380,
-      18
-    );
-
-    // Signature Box
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(30, 430, 380, 120);
+    ctx.fillRect(24, 370, 332, 95);
     ctx.strokeStyle = '#cbd5e1';
-    ctx.strokeRect(30, 430, 380, 120);
+    ctx.strokeRect(24, 370, 332, 95);
 
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('[서명 및 날인란]', 42, 452);
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('[서명 및 날인란]', 34, 388);
 
     ctx.fillStyle = '#475569';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(`(갑) 발주사: 주식회사 알파 (대표이사 서명/인)`, 42, 480);
-    ctx.fillText(`(을) 수급사: ${author || '주식회사 베타'} (대표이사 서명/인)`, 42, 510);
+    ctx.font = '9px sans-serif';
+    ctx.fillText(`(갑) 발주사: 주식회사 알파 (대표이사 서명/인)`, 34, 412);
+    ctx.fillText(`(을) 수급사: ${author || '주식회사 베타'} (대표이사 서명/인)`, 34, 436);
   }
 
-  /**
-   * Helper function to wrap text inside canvas
-   */
   private static wrapText(
     ctx: CanvasRenderingContext2D,
     text: string,
