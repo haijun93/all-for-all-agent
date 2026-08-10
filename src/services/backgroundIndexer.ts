@@ -32,6 +32,7 @@ export class BackgroundIndexer {
     isMinimized: false,
   };
 
+  private static currentScanId = 0;
   private static statusListeners = new Set<StatusListener>();
   private static docStreamListeners = new Set<DocStreamListener>();
 
@@ -41,6 +42,13 @@ export class BackgroundIndexer {
 
   public static setMinimized(minimized: boolean): void {
     this.status.isMinimized = minimized;
+    this.notifyStatus();
+  }
+
+  public static cancelCurrentScan(): void {
+    this.currentScanId++;
+    this.status.isIndexing = false;
+    this.status.statusMessage = '인덱싱이 취소되었습니다.';
     this.notifyStatus();
   }
 
@@ -57,7 +65,26 @@ export class BackgroundIndexer {
 
   private static notifyStatus(): void {
     const s = this.getStatus();
-    this.statusListeners.forEach((fn) => fn(s));
+    this.statusListeners.forEach((fn) => {
+      try {
+        fn(s);
+      } catch (e) {
+        console.warn(e);
+      }
+    });
+  }
+
+  /**
+   * Generates a stable unique ID based on file path and name
+   */
+  public static generateDocId(folderPath: string, fileName: string): string {
+    const raw = `${folderPath}/${fileName}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+      hash |= 0;
+    }
+    return `doc-${Math.abs(hash).toString(36)}`;
   }
 
   /**
@@ -93,7 +120,7 @@ export class BackgroundIndexer {
     );
 
     return {
-      id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: this.generateDocId(folderPath, file.name),
       title,
       fileName: file.name,
       fileSize: file.size,
@@ -117,7 +144,8 @@ export class BackgroundIndexer {
    * Starts non-blocking background indexing stream from directory handle
    */
   public static async startIndexingFromHandle(dirHandle: any): Promise<void> {
-    if (this.status.isIndexing) return;
+    // Increment scan ID so any previous ongoing scan terminates gracefully
+    const scanId = ++this.currentScanId;
 
     this.status = {
       isIndexing: true,
@@ -127,7 +155,7 @@ export class BackgroundIndexer {
       progressPercent: 0,
       docsPerSecond: 0,
       elapsedMs: 0,
-      statusMessage: '디렉토리 실시간 1페이지 파싱 및 인덱싱 중...',
+      statusMessage: `'${dirHandle.name}' 실시간 1페이지 파싱 및 인덱싱 시작...`,
       isMinimized: false,
     };
     this.notifyStatus();
@@ -138,33 +166,50 @@ export class BackgroundIndexer {
 
     try {
       const traverse = async (handle: any, path: string) => {
+        if (this.currentScanId !== scanId) return;
+
         for await (const entry of handle.values()) {
+          if (this.currentScanId !== scanId) return;
+
           if (entry.kind === 'file') {
             if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(entry.name)) {
-              const file = await entry.getFile();
-              
-              // Extract real 1st page visual thumbnail
-              const doc = await this.createRealDocItem(file, path);
-              instantDocs.push(doc);
+              try {
+                const file = await entry.getFile();
+                if (this.currentScanId !== scanId) return;
 
-              // Live stream each document to UI immediately
-              FastDocIndex.addDocument(doc);
-              this.docStreamListeners.forEach((fn) => fn(doc));
+                // Extract real 1st page visual thumbnail
+                const doc = await this.createRealDocItem(file, path);
+                if (this.currentScanId !== scanId) return;
 
-              // Compute live speedometer
-              const elapsed = Math.max(1, performance.now() - startTime);
-              const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+                instantDocs.push(doc);
 
-              this.status.currentFileName = file.name;
-              this.status.scannedCount = instantDocs.length;
-              this.status.totalFound = instantDocs.length;
-              this.status.docsPerSecond = speed;
-              this.status.elapsedMs = Math.round(elapsed);
-              this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
-              this.notifyStatus();
+                // Live stream each document to UI immediately
+                FastDocIndex.addDocument(doc);
+                this.docStreamListeners.forEach((fn) => {
+                  try {
+                    fn(doc);
+                  } catch (e) {
+                    console.warn(e);
+                  }
+                });
+
+                // Compute live speedometer
+                const elapsed = Math.max(1, performance.now() - startTime);
+                const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+
+                this.status.currentFileName = file.name;
+                this.status.scannedCount = instantDocs.length;
+                this.status.totalFound = instantDocs.length;
+                this.status.docsPerSecond = speed;
+                this.status.elapsedMs = Math.round(elapsed);
+                this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
+                this.notifyStatus();
+              } catch (fileErr) {
+                console.warn('Error reading file:', entry.name, fileErr);
+              }
             }
           } else if (entry.kind === 'directory') {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
             await traverse(entry, `${path}/${entry.name}`);
           }
         }
@@ -172,23 +217,28 @@ export class BackgroundIndexer {
 
       await traverse(dirHandle, rootName);
 
+      if (this.currentScanId !== scanId) return;
+
       // Bulk persist to IndexedDB
-      await DocStorageService.saveDocumentsBulk(instantDocs);
+      if (instantDocs.length > 0) {
+        await DocStorageService.saveDocumentsBulk(instantDocs);
+      }
 
       const totalElapsed = Math.max(1, performance.now() - startTime);
       const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
 
-      this.status.isIndexing = false;
       this.status.progressPercent = 100;
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
       this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
-      this.notifyStatus();
     } catch (err) {
       console.error('Background indexer error:', err);
-      this.status.isIndexing = false;
       this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
-      this.notifyStatus();
+    } finally {
+      if (this.currentScanId === scanId) {
+        this.status.isIndexing = false;
+        this.notifyStatus();
+      }
     }
   }
 
@@ -196,7 +246,7 @@ export class BackgroundIndexer {
    * Starts non-blocking background indexing stream from FileList
    */
   public static async startIndexingFromFiles(files: FileList): Promise<void> {
-    if (this.status.isIndexing) return;
+    const scanId = ++this.currentScanId;
 
     this.status = {
       isIndexing: true,
@@ -214,42 +264,68 @@ export class BackgroundIndexer {
     const startTime = performance.now();
     const instantDocs: DocumentItem[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(file.name)) {
-        const folderPath = file.webkitRelativePath
-          ? file.webkitRelativePath.split('/').slice(0, -1).join('/')
-          : '내 문서';
+    try {
+      for (let i = 0; i < files.length; i++) {
+        if (this.currentScanId !== scanId) return;
 
-        const doc = await this.createRealDocItem(file, folderPath);
-        instantDocs.push(doc);
+        const file = files[i];
+        if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(file.name)) {
+          const folderPath = file.webkitRelativePath
+            ? file.webkitRelativePath.split('/').slice(0, -1).join('/')
+            : '내 문서';
 
-        FastDocIndex.addDocument(doc);
-        this.docStreamListeners.forEach((fn) => fn(doc));
+          try {
+            const doc = await this.createRealDocItem(file, folderPath);
+            if (this.currentScanId !== scanId) return;
 
-        const elapsed = Math.max(1, performance.now() - startTime);
-        const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+            instantDocs.push(doc);
 
-        this.status.currentFileName = file.name;
-        this.status.scannedCount = instantDocs.length;
-        this.status.progressPercent = Math.round(((i + 1) / files.length) * 100);
-        this.status.docsPerSecond = speed;
-        this.status.elapsedMs = Math.round(elapsed);
-        this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
+            FastDocIndex.addDocument(doc);
+            this.docStreamListeners.forEach((fn) => {
+              try {
+                fn(doc);
+              } catch (e) {
+                console.warn(e);
+              }
+            });
+
+            const elapsed = Math.max(1, performance.now() - startTime);
+            const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+
+            this.status.currentFileName = file.name;
+            this.status.scannedCount = instantDocs.length;
+            this.status.progressPercent = Math.round(((i + 1) / files.length) * 100);
+            this.status.docsPerSecond = speed;
+            this.status.elapsedMs = Math.round(elapsed);
+            this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
+            this.notifyStatus();
+          } catch (fileErr) {
+            console.warn('Error reading file:', file.name, fileErr);
+          }
+        }
+      }
+
+      if (this.currentScanId !== scanId) return;
+
+      if (instantDocs.length > 0) {
+        await DocStorageService.saveDocumentsBulk(instantDocs);
+      }
+
+      const totalElapsed = Math.max(1, performance.now() - startTime);
+      const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
+
+      this.status.progressPercent = 100;
+      this.status.docsPerSecond = finalSpeed;
+      this.status.elapsedMs = Math.round(totalElapsed);
+      this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+    } catch (err) {
+      console.error('Background indexer error:', err);
+      this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
+    } finally {
+      if (this.currentScanId === scanId) {
+        this.status.isIndexing = false;
         this.notifyStatus();
       }
     }
-
-    await DocStorageService.saveDocumentsBulk(instantDocs);
-
-    const totalElapsed = Math.max(1, performance.now() - startTime);
-    const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
-
-    this.status.isIndexing = false;
-    this.status.progressPercent = 100;
-    this.status.docsPerSecond = finalSpeed;
-    this.status.elapsedMs = Math.round(totalElapsed);
-    this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
-    this.notifyStatus();
   }
 }

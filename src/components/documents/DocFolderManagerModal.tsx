@@ -30,27 +30,25 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
     try {
       if ('showDirectoryPicker' in window) {
         const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' });
-        // Start non-blocking background indexer
-        BackgroundIndexer.startIndexingFromHandle(dirHandle).then(() => {
-          onScanComplete();
-        });
-        // Close modal immediately so user can browse while indexing streams in background!
         onClose();
+        // Start non-blocking background indexer
+        await BackgroundIndexer.startIndexingFromHandle(dirHandle);
+        onScanComplete();
       } else {
         fallbackInputRef.current?.click();
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.warn(err);
+        fallbackInputRef.current?.click();
       }
     }
   };
 
   const handleFallbackFiles = async (files: FileList) => {
-    BackgroundIndexer.startIndexingFromFiles(files).then(() => {
-      onScanComplete();
-    });
     onClose();
+    await BackgroundIndexer.startIndexingFromFiles(files);
+    onScanComplete();
   };
 
   const handleClearSampleDocs = async () => {
@@ -143,7 +141,15 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
               ref={fallbackInputRef}
               {...({ webkitdirectory: '', directory: '' } as any)}
               style={{ display: 'none' }}
-              onChange={(e) => e.target.files && handleFallbackFiles(e.target.files)}
+              onClick={(e) => {
+                (e.target as any).value = '';
+              }}
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFallbackFiles(e.target.files);
+                  e.target.value = '';
+                }
+              }}
             />
 
             <button

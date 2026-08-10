@@ -243,13 +243,24 @@ export const IndexingProgressHUD: React.FC = () => {
       {/* Footer Info */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
         <span>소요 시간: {(status.elapsedMs / 1000).toFixed(2)}초</span>
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{ padding: '2px 6px', fontSize: '0.7rem', color: 'var(--accent-blue)' }}
-          onClick={() => BackgroundIndexer.setMinimized(true)}
-        >
-          백그라운드로 숨기기
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {status.isIndexing && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: '2px 6px', fontSize: '0.7rem', color: '#ea4335' }}
+              onClick={() => BackgroundIndexer.cancelCurrentScan()}
+            >
+              스캔 중지
+            </button>
+          )}
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ padding: '2px 6px', fontSize: '0.7rem', color: 'var(--accent-blue)' }}
+            onClick={() => BackgroundIndexer.setMinimized(true)}
+          >
+            백그라운드로 숨기기
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -24,14 +24,14 @@ export interface RealDocParseResult {
 
 export class RealDocExtractor {
   /**
-   * Main entry point: Extracts real 1st page visual thumbnail and text from an actual file
+   * Main entry point: Extracts real 1st page visual thumbnail and text with strict timeout protection
    */
   public static async extractRealDocumentData(
     file: File,
     format: DocFormat,
     category: string
   ): Promise<RealDocParseResult> {
-    try {
+    const parsePromise = async (): Promise<RealDocParseResult> => {
       if (format === 'pdf') {
         return await this.extractPdf(file);
       } else if (format === 'docx' || format === 'doc') {
@@ -47,9 +47,16 @@ export class RealDocExtractor {
       } else {
         return await this.extractPlainText(file, format, category);
       }
+    };
+
+    const timeoutPromise = new Promise<RealDocParseResult>((_, reject) => {
+      setTimeout(() => reject(new Error('Extraction timeout')), 2500);
+    });
+
+    try {
+      return await Promise.race([parsePromise(), timeoutPromise]);
     } catch (err) {
       console.warn(`[RealDocExtractor] Fallback for ${file.name}:`, err);
-      // Clean fallback if file is corrupted or protected
       const title = file.name.replace(/\.[^/.]+$/, '');
       const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
       const thumb = DocRendererService.generateDocumentFirstPageThumbnail(

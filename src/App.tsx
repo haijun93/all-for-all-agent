@@ -98,7 +98,12 @@ export const App: React.FC = () => {
     // 1. Live stream new documents discovered by background indexer
     const unsubStream = BackgroundIndexer.subscribeDocStream((newDoc) => {
       setDocuments((prev) => {
-        if (prev.some((d) => d.id === newDoc.id)) return prev;
+        const idx = prev.findIndex((d) => d.id === newDoc.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = newDoc;
+          return next;
+        }
         return [newDoc, ...prev];
       });
     });
