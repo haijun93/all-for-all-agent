@@ -44,6 +44,8 @@ export class RealDocExtractor {
         return await this.extractHwp(file, category);
       } else if (format === 'epub') {
         return await this.extractEpub(file, category);
+      } else if (format === 'zip' || format === 'cbz') {
+        return await this.extractComicZip(file, category);
       } else {
         return await this.extractPlainText(file, format, category);
       }
@@ -458,7 +460,57 @@ export class RealDocExtractor {
   }
 
   /**
-   * 7. Plain Text / Markdown / Code fallback
+   * 7. Real Comic Book (.zip / .cbz) Cover & 1st Page Image Extraction
+   */
+  private static async extractComicZip(file: File, category: string): Promise<RealDocParseResult> {
+    const zip = await JSZip.loadAsync(file);
+
+    // Collect all valid image entries inside the zip
+    const imageNames = Object.keys(zip.files).filter((name) => {
+      const entry = zip.files[name];
+      if (entry.dir || name.includes('__MACOSX') || name.startsWith('.')) return false;
+      return /\.(jpe?g|png|webp|bmp|gif)$/i.test(name);
+    });
+
+    if (imageNames.length > 0) {
+      // Natural sort to pick the actual 1st page (e.g., 001.jpg, cover.jpg)
+      imageNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+      const firstImageFile = zip.file(imageNames[0]);
+      if (firstImageFile) {
+        const base64 = await firstImageFile.async('base64');
+        const ext = imageNames[0].split('.').pop()?.toLowerCase() || 'jpeg';
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const title = file.name.replace(/\.[^/.]+$/, '');
+
+        return {
+          thumbnailUrl: `data:${mime};base64,${base64}`,
+          extractedText: `[만화책 코믹스] ${title}\n총 ${imageNames.length}페이지 수록\n첫 페이지: ${imageNames[0]}`,
+          pageCount: imageNames.length,
+        };
+      }
+    }
+
+    const title = file.name.replace(/\.[^/.]+$/, '');
+    const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
+    const thumb = DocRendererService.generateDocumentFirstPageThumbnail(
+      title,
+      'zip',
+      category,
+      `${title} 만화책 압축 파일`,
+      dateStr,
+      '만화 작가'
+    );
+
+    return {
+      thumbnailUrl: thumb,
+      extractedText: `${title} 만화책 파일`,
+      pageCount: Math.max(1, imageNames.length),
+    };
+  }
+
+  /**
+   * 8. Plain Text / Markdown / Code fallback
    */
   private static async extractPlainText(
     file: File,

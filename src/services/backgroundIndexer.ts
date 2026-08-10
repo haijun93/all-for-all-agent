@@ -99,6 +99,8 @@ export class BackgroundIndexer {
     else if (ext === 'hwp') format = 'hwp';
     else if (ext === 'hwpx') format = 'hwpx';
     else if (ext === 'epub') format = 'epub';
+    else if (ext === 'zip') format = 'zip';
+    else if (ext === 'cbz') format = 'cbz';
     else if (ext === 'pptx' || ext === 'ppt') format = 'pptx';
 
     const title = file.name.replace(/\.[^/.]+$/, '');
@@ -172,7 +174,7 @@ export class BackgroundIndexer {
           if (this.currentScanId !== scanId) return;
 
           if (entry.kind === 'file') {
-            if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(entry.name)) {
+            if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|zip|cbz|pptx?|txt)$/i.test(entry.name)) {
               try {
                 const file = await entry.getFile();
                 if (this.currentScanId !== scanId) return;
@@ -269,7 +271,7 @@ export class BackgroundIndexer {
         if (this.currentScanId !== scanId) return;
 
         const file = files[i];
-        if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(file.name)) {
+        if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|zip|cbz|pptx?|txt)$/i.test(file.name)) {
           const folderPath = file.webkitRelativePath
             ? file.webkitRelativePath.split('/').slice(0, -1).join('/')
             : '내 문서';

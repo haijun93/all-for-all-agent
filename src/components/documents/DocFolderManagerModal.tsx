@@ -132,6 +132,9 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
               <BookOpen size={11} />
               <span>EPUB 전자책</span>
             </span>
+            <span style={{ fontSize: '0.72rem', background: '#ffedd5', color: '#c2410c', padding: '2px 8px', borderRadius: 4, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span>🎨 만화책 (ZIP / CBZ)</span>
+            </span>
           </div>
 
           {/* Action Trigger Buttons */}

@@ -171,6 +171,8 @@ export class DocStorageService {
     else if (ext === 'hwp') format = 'hwp';
     else if (ext === 'hwpx') format = 'hwpx';
     else if (ext === 'epub') format = 'epub';
+    else if (ext === 'zip') format = 'zip';
+    else if (ext === 'cbz') format = 'cbz';
     else if (ext === 'pptx' || ext === 'ppt') format = 'pptx';
 
     const title = file.name.replace(/\.[^/.]+$/, '');

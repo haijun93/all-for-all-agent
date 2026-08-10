@@ -46,6 +46,10 @@ const CATEGORY_RULES: Array<{ category: string; terms: string[] }> = [
     category: '📚 도서 / 전자책 (e-Book)',
     terms: ['소설', '에세이', '인문', '기술서', '챕터', 'chapter', '저자', '출판사', '발행일', '전자책', 'epub', '독서', '문학', '가이드북'],
   },
+  {
+    category: '🎨 만화책 / 코믹스 (Comics)',
+    terms: ['만화', '만화책', '코믹스', '드래곤볼', '진격의 거인', '귀멸의 칼날', '베르세르크', '원펀맨', '주술회전', '스파이', '스캔', '단행본', '완결', '전권', '무협', 'comics', 'manga', 'cbz', 'zip', '화', '권'],
+  },
 ];
 
 export class KeywordEngine {

@@ -21,6 +21,8 @@ export class DocRendererService {
       hwp: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWP' },
       hwpx: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWPX' },
       epub: { bg: '#f3e8ff', accent: '#9333ea', label: 'EPUB' },
+      zip: { bg: '#ffedd5', accent: '#ea580c', label: 'COMIC' },
+      cbz: { bg: '#ffedd5', accent: '#ea580c', label: 'CBZ' },
       pptx: { bg: '#ffedd5', accent: '#ea580c', label: 'PPTX' },
       txt: { bg: '#f1f5f9', accent: '#64748b', label: 'TXT' },
     };

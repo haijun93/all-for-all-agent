@@ -1,4 +1,4 @@
-export type DocFormat = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls' | 'hwp' | 'hwpx' | 'pptx' | 'txt' | 'epub';
+export type DocFormat = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls' | 'hwp' | 'hwpx' | 'pptx' | 'txt' | 'epub' | 'zip' | 'cbz';
 
 export interface DocumentItem {
   id: string;
