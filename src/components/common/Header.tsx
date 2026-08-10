@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ViewMode } from '../../types/photo';
+import { modifierKey } from '../../utils/platform';
 import {
   Search,
   Plus,
@@ -46,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="app-title">
             Picasa <span style={{ color: '#4285f4' }}>Web</span>
-            <span className="app-version">v2.5 PRO</span>
+            <span className="app-version">v2.5 Cross-Platform</span>
           </div>
         </div>
       </div>
@@ -103,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
               ✕
             </button>
           ) : (
-            <span className="search-shortcut-badge">⌘K</span>
+            <span className="search-shortcut-badge">{modifierKey}K</span>
           )}
         </div>
       </div>
@@ -132,11 +133,11 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           className="btn btn-secondary btn-sm"
           onClick={onOpenFolderManager}
-          title="내 Mac 컴퓨터의 실제 사진 폴더 스캔 및 인덱싱"
+          title="내 컴퓨터(Windows / Mac)의 실제 사진 폴더 스캔 및 인덱싱"
           style={{ border: '1px solid rgba(66, 133, 244, 0.4)', background: 'rgba(66, 133, 244, 0.12)', color: '#60a5fa' }}
         >
           <FolderSearch size={15} color="#60a5fa" />
-          <span>폴더 관리자 (Mac 스캔)</span>
+          <span>폴더 관리자 (로컬 스캔)</span>
         </button>
 
         <button className="btn btn-primary btn-sm" onClick={onOpenImport}>

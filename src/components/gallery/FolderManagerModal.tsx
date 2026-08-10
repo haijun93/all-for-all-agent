@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FolderScannerService, type ScanProgress } from '../../services/folderScanner';
 import { StorageService } from '../../services/storage';
+import { fileExplorerName, isWindows } from '../../utils/platform';
 import {
   FolderSearch,
   HardDrive,
@@ -72,14 +73,14 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
   const handleFallbackFiles = async (files: FileList) => {
     setIsScanning(true);
     let count = 0;
-    let mainFolderName = '내 사진 폴더';
+    let mainFolderName = isWindows ? '내 사진 폴더' : '내 로컬 폴더';
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|heic)$/i.test(file.name)) {
         const folderPath = file.webkitRelativePath
           ? file.webkitRelativePath.split('/').slice(0, -1).join('/')
-          : '내 로컬 폴더';
+          : (isWindows ? 'C:\\Pictures' : '내 로컬 폴더');
         if (i === 0 && file.webkitRelativePath) {
           mainFolderName = file.webkitRelativePath.split('/')[0];
         }
@@ -156,7 +157,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
                 Picasa 폴더 관리자 (Folder Manager)
               </h3>
               <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                내 Mac 컴퓨터의 폴더를 지정하여 사진을 자동 탐색 및 인덱싱합니다.
+                내 컴퓨터(Windows / Mac)의 폴더를 지정하여 사진을 자동 탐색 및 인덱싱합니다.
               </span>
             </div>
           </div>
@@ -180,10 +181,10 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
             <HardDrive size={24} color="#4285f4" style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
               <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#ffffff', marginBottom: 4 }}>
-                내 Mac의 실제 사진 폴더 스캔 및 인덱싱
+                내 컴퓨터의 실제 사진 폴더 스캔 및 인덱싱 ({isWindows ? 'Windows' : 'Mac'})
               </h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Picasa처럼 원하는 폴더(예: <code>~/Pictures</code>, <code>~/Downloads</code>, <code>외장하드</code>)를 지정하면, 하위 디렉토리까지 모든 사진을 고속으로 자동 검색하여 Picasa 라이브러리에 인덱싱합니다.
+                {fileExplorerName}에서 원하는 폴더(예: <code>{isWindows ? 'C:\\Users\\...\\Pictures' : '~/Pictures'}</code>, <code>D:\\Photos</code>, <code>외장하드/USB</code>)를 지정하면, 하위 디렉토리까지 모든 사진을 고속으로 자동 검색하여 Picasa 라이브러리에 인덱싱합니다.
               </p>
             </div>
           </div>
@@ -205,7 +206,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
               disabled={isScanning}
             >
               <FolderPlus size={20} />
-              <span>{isScanning ? '컴퓨터 스캔 중...' : '📁 Mac에서 인덱싱할 폴더 지정하기'}</span>
+              <span>{isScanning ? '컴퓨터 스캔 중...' : `📁 ${fileExplorerName}에서 인덱싱할 폴더 지정하기`}</span>
             </button>
 
             <button
@@ -222,7 +223,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
           {watchedFolders.length > 0 && (
             <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 16 }}>
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
-                인덱싱된 내 Mac 폴더 목록:
+                인덱싱된 내 컴퓨터 폴더 목록:
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {watchedFolders.map((f) => (
