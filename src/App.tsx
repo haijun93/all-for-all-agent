@@ -297,6 +297,7 @@ export const App: React.FC = () => {
               onCreatePerson={handleCreatePerson}
               onOpenLightbox={(photo) => setLightboxPhoto(photo)}
               onOpenEditor={(photo) => setEditorPhoto(photo)}
+              onLibraryReload={loadData}
             />
           )}
         </main>

@@ -10,7 +10,8 @@ import {
   Star,
   Download,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  UserCheck
 } from 'lucide-react';
 
 interface LightboxModalProps {
@@ -34,6 +35,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showExif, setShowExif] = useState(false);
+  const [showFaceBoxes, setShowFaceBoxes] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
 
   // Sync index when photo opens
@@ -118,6 +120,18 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
 
           <div style={{ width: 1, height: 18, background: 'rgba(255, 255, 255, 0.2)' }} />
 
+          {/* Toggle Face Tags */}
+          {currentPhoto.faces && currentPhoto.faces.length > 0 && (
+            <button
+              className={`btn btn-sm ${showFaceBoxes ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowFaceBoxes(!showFaceBoxes)}
+              title="얼굴 인식 박스 표시/숨김"
+            >
+              <UserCheck size={14} />
+              <span>얼굴 태그 ({currentPhoto.faces.length})</span>
+            </button>
+          )}
+
           <button
             className={`btn btn-sm ${currentPhoto.isStarred ? 'btn-lucky' : 'btn-secondary'}`}
             onClick={() => onToggleStar(currentPhoto.id)}
@@ -178,16 +192,59 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
           </>
         )}
 
-        <img
-          src={currentPhoto.url}
-          alt={currentPhoto.title}
-          className="lightbox-image"
-          style={{
-            transform: `scale(${zoomLevel})`,
-            cursor: zoomLevel > 1 ? 'grab' : 'default',
-          }}
+        <div
+          style={{ position: 'relative', display: 'inline-block' }}
           onClick={(e) => e.stopPropagation()}
-        />
+        >
+          <img
+            src={currentPhoto.url}
+            alt={currentPhoto.title}
+            className="lightbox-image"
+            style={{
+              transform: `scale(${zoomLevel})`,
+              cursor: zoomLevel > 1 ? 'grab' : 'default',
+            }}
+          />
+
+          {/* Render Detected Face Bounding Boxes */}
+          {showFaceBoxes &&
+            currentPhoto.faces?.map((face) => (
+              <div
+                key={face.id}
+                style={{
+                  position: 'absolute',
+                  left: `${face.box.x * 100}%`,
+                  top: `${face.box.y * 100}%`,
+                  width: `${face.box.width * 100}%`,
+                  height: `${face.box.height * 100}%`,
+                  border: '2px solid #4285f4',
+                  borderRadius: 6,
+                  boxShadow: '0 0 10px rgba(66, 133, 244, 0.6)',
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    transform: 'translateY(-100%)',
+                    background: 'rgba(18, 23, 31, 0.9)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#fff',
+                    padding: '3px 8px',
+                    borderRadius: 4,
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    border: '1px solid #4285f4',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  👤 {face.personName}
+                </div>
+              </div>
+            ))}
+        </div>
 
         {/* EXIF Information Sidebar */}
         {showExif && (
