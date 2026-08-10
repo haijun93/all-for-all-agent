@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Person, Photo } from '../../types/photo';
 import { AIFaceEngine } from '../../services/aiFaceEngine';
 import { StorageService } from '../../services/storage';
@@ -44,6 +44,15 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
   const [scanProgress, setScanProgress] = useState<{ current: number; total: number; status: string } | null>(null);
   const [scanResult, setScanResult] = useState<string | null>(null);
 
+  // Auto select active person if none selected or if list changed
+  useEffect(() => {
+    if (!activePersonId && people.length > 0) {
+      setActivePersonId(people[0].id);
+    } else if (activePersonId && !people.some((p) => p.id === activePersonId) && people.length > 0) {
+      setActivePersonId(people[0].id);
+    }
+  }, [people, activePersonId]);
+
   // Find photos containing this person
   const personPhotos = photos.filter((p) =>
     p.faces?.some((f) => f.personId === activePersonId)
@@ -65,7 +74,6 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
     const person = people.find((p) => p.id === personId);
     if (!person) return;
 
-    // Update person name in storage
     person.name = editNameValue.trim();
     const allPhotos = await StorageService.getAllPhotos();
     for (const photo of allPhotos) {
@@ -93,8 +101,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
         setScanProgress({ current: curr, total: tot, status });
       });
 
-      setScanResult(`AI 분석 완료! ${res.clusteredCount}개의 얼굴을 감지하고 분류했습니다.`);
-      onLibraryReload();
+      setScanResult(`AI 분석 완료! ${res.clusteredCount}개의 얼굴을 감지하여 인물별로 분류했습니다.`);
+      await onLibraryReload();
     } catch (err) {
       console.error('AI scan error:', err);
     } finally {
@@ -121,7 +129,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Users size={18} color="#4285f4" />
             <h3 style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
-              인물 (People)
+              인물 (People) <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({people.length})</span>
             </h3>
           </div>
           <button
@@ -239,8 +247,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
                   src={person.avatarUrl}
                   alt={person.name}
                   style={{
-                    width: 42,
-                    height: 42,
+                    width: 44,
+                    height: 44,
                     borderRadius: '50%',
                     objectFit: 'cover',
                     border: '2px solid rgba(255, 255, 255, 0.2)',
@@ -354,7 +362,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
                 <ImageIcon size={40} style={{ marginBottom: 10 }} />
-                <p>이 인물로 태그된 사진이 없습니다. 상단의 <b>[얼굴 AI 자동 분류]</b>를 실행해 보세요.</p>
+                <p>이 인물로 태그된 사진이 없습니다. 상단의 <b>[⚡️ 라이브러리 전체 얼굴 AI 자동 분류]</b>를 실행해 보세요.</p>
               </div>
             )}
           </div>
