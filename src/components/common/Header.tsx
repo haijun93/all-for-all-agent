@@ -9,7 +9,8 @@ import {
   Users,
   Calendar,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  FolderSearch
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -17,6 +18,7 @@ interface HeaderProps {
   onViewModeChange: (mode: ViewMode) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  onOpenFolderManager: () => void;
   onOpenImport: () => void;
   onStartSlideshow: () => void;
   onResetDefaults: () => void;
@@ -28,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewModeChange,
   searchQuery,
   onSearchChange,
+  onOpenFolderManager,
   onOpenImport,
   onStartSlideshow,
   onResetDefaults,
@@ -124,6 +127,16 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Play size={14} />
           <span>슬라이드쇼</span>
+        </button>
+
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={onOpenFolderManager}
+          title="내 Mac 컴퓨터의 실제 사진 폴더 스캔 및 인덱싱"
+          style={{ border: '1px solid rgba(66, 133, 244, 0.4)', background: 'rgba(66, 133, 244, 0.12)', color: '#60a5fa' }}
+        >
+          <FolderSearch size={15} color="#60a5fa" />
+          <span>폴더 관리자 (Mac 스캔)</span>
         </button>
 
         <button className="btn btn-primary btn-sm" onClick={onOpenImport}>

@@ -1,0 +1,17 @@
+{
+  "name": "Picasa Web - Modern Photo Studio",
+  "short_name": "Picasa Web",
+  "description": "Google Picasa inspired Photo Management & Editing Suite",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0e12",
+  "theme_color": "#13171f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

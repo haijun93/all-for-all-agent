@@ -6,6 +6,7 @@ import { Sidebar } from './components/common/Sidebar';
 import { BottomBar } from './components/common/BottomBar';
 import { GalleryView } from './components/gallery/GalleryView';
 import { ImportModal } from './components/gallery/ImportModal';
+import { FolderManagerModal } from './components/gallery/FolderManagerModal';
 import { EditorModal } from './components/editor/EditorModal';
 import { LightboxModal } from './components/lightbox/LightboxModal';
 import { Slideshow } from './components/lightbox/Slideshow';
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [editorPhoto, setEditorPhoto] = useState<Photo | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isFolderManagerOpen, setIsFolderManagerOpen] = useState(false);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
 
   // Load data from IndexedDB
@@ -217,6 +219,7 @@ export const App: React.FC = () => {
         onViewModeChange={setViewMode}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onOpenFolderManager={() => setIsFolderManagerOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
         onStartSlideshow={() => setIsSlideshowOpen(true)}
         onResetDefaults={handleResetDefaults}
@@ -338,6 +341,12 @@ export const App: React.FC = () => {
         isOpen={!!editorPhoto}
         onClose={() => setEditorPhoto(null)}
         onSavePhoto={handleSaveEditedPhoto}
+      />
+
+      <FolderManagerModal
+        isOpen={isFolderManagerOpen}
+        onClose={() => setIsFolderManagerOpen(false)}
+        onScanComplete={loadData}
       />
 
       <ImportModal
