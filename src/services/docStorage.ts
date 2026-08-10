@@ -70,6 +70,31 @@ export class DocStorageService {
       const req = store.getAll();
       req.onsuccess = () => {
         const docs = req.result as DocumentItem[];
+        const needsUpgrade: DocumentItem[] = [];
+
+        // Upgrade any legacy SVG placeholder thumbnails immediately
+        docs.forEach((doc) => {
+          if (doc.thumbnailUrl?.startsWith('data:image/svg+xml')) {
+            try {
+              doc.thumbnailUrl = DocRendererService.generateDocumentFirstPageThumbnail(
+                doc.title,
+                doc.format,
+                doc.category,
+                doc.previewSnippet || doc.title,
+                doc.dateCreated,
+                doc.author
+              );
+              needsUpgrade.push(doc);
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+        });
+
+        if (needsUpgrade.length > 0) {
+          this.saveDocumentsBulk(needsUpgrade).catch(console.warn);
+        }
+
         docs.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime());
         resolve(docs);
       };

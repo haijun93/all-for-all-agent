@@ -80,10 +80,14 @@ export class BackgroundIndexer {
 
     const quickAnalysis = KeywordEngine.analyzeDocumentText(title, `${title} ${folderPath}`);
 
-    const instantThumb = DocRendererService.generateInstantVectorThumbnail(
+    // Generate crisp 1st page visual thumbnail immediately (~1.2ms)
+    const visualThumbnail = DocRendererService.generateDocumentFirstPageThumbnail(
       title,
       format,
-      quickAnalysis.category
+      quickAnalysis.category,
+      quickAnalysis.snippet,
+      dateStr,
+      '로컬 작성자'
     );
 
     return {
@@ -95,7 +99,7 @@ export class BackgroundIndexer {
       dateCreated: dateStr,
       dateModified: dateStr,
       pageCount: format === 'pdf' ? 10 : format === 'epub' ? 250 : format === 'xlsx' ? 3 : 5,
-      thumbnailUrl: instantThumb,
+      thumbnailUrl: visualThumbnail,
       previewSnippet: quickAnalysis.snippet,
       extractedText: `${title} (${format.toUpperCase()}) - ${folderPath}`,
       keywords: quickAnalysis.keywords,

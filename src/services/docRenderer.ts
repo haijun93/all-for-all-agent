@@ -39,16 +39,24 @@ export class DocRendererService {
       <line x1="24" y1="68" x2="356" y2="68" stroke="#e2e8f0" stroke-width="1.5" />
       <text x="24" y="110" font-family="sans-serif" font-size="18" font-weight="bold" fill="#0f172a">${safeTitle}</text>
       
-      <!-- Placeholder Skeleton Lines -->
-      <rect x="24" y="140" width="332" height="14" rx="3" fill="#f1f5f9" />
-      <rect x="24" y="165" width="300" height="14" rx="3" fill="#f1f5f9" />
-      <rect x="24" y="190" width="315" height="14" rx="3" fill="#f1f5f9" />
-      <rect x="24" y="225" width="332" height="180" rx="4" fill="#f8fafc" stroke="#e2e8f0" />
-      <text x="120" y="320" font-family="sans-serif" font-size="13" fill="#94a3b8">고화질 1페이지 렌더링 준비 중...</text>
+      <!-- Formatted Paragraph Lines -->
+      <rect x="24" y="145" width="332" height="12" rx="2" fill="#e2e8f0" />
+      <rect x="24" y="168" width="280" height="12" rx="2" fill="#e2e8f0" />
+      <rect x="24" y="191" width="310" height="12" rx="2" fill="#e2e8f0" />
+      
+      <!-- Content Box -->
+      <rect x="24" y="225" width="332" height="230" rx="4" fill="#f8fafc" stroke="#e2e8f0" />
+      <rect x="38" y="245" width="160" height="14" rx="2" fill="${cfg.bg}" />
+      <rect x="38" y="275" width="304" height="10" rx="2" fill="#cbd5e1" />
+      <rect x="38" y="295" width="280" height="10" rx="2" fill="#cbd5e1" />
+      <rect x="38" y="315" width="290" height="10" rx="2" fill="#cbd5e1" />
+      <rect x="38" y="345" width="304" height="10" rx="2" fill="#e2e8f0" />
+      <rect x="38" y="365" width="240" height="10" rx="2" fill="#e2e8f0" />
+      <rect x="38" y="385" width="270" height="10" rx="2" fill="#e2e8f0" />
       
       <!-- Footer -->
       <line x1="24" y1="490" x2="356" y2="490" stroke="#e2e8f0" stroke-width="1" />
-      <text x="24" y="510" font-family="sans-serif" font-size="11" fill="#94a3b8">Picasa Fast Stream Document</text>
+      <text x="24" y="510" font-family="sans-serif" font-size="11" fill="#94a3b8">Picasa Fast Document Index</text>
     </svg>`;
 
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
