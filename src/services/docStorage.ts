@@ -99,6 +99,21 @@ export class DocStorageService {
     });
   }
 
+  /**
+   * High performance bulk document saving in a single IndexedDB transaction
+   */
+  public static async saveDocumentsBulk(docs: DocumentItem[]): Promise<void> {
+    if (docs.length === 0) return;
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('documents', 'readwrite');
+      const store = tx.objectStore('documents');
+      docs.forEach((doc) => store.put(doc));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   public static async deleteDocument(id: string): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
