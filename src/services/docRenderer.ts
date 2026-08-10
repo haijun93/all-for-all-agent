@@ -103,6 +103,8 @@ export class DocRendererService {
       this.drawHwpFirstPage(ctx, title, category, snippet, date, author);
     } else if (format === 'epub') {
       this.drawEpubFirstPage(ctx, title, category, snippet, date, author);
+    } else if (format === 'zip' || format === 'cbz') {
+      this.drawComicFirstPage(ctx, title, category, snippet, date, author);
     } else {
       // docx, doc, txt, pptx
       this.drawWordFirstPage(ctx, title, category, snippet, date, author);
@@ -504,6 +506,154 @@ export class DocRendererService {
     ctx.fillStyle = '#9ca3af';
     ctx.font = '9px sans-serif';
     ctx.fillText('ISBN 979-11-0000-000-0 • EPUB 3.0 Format', 48, 472);
+  }
+
+  /**
+   * Authentic Manga / Comic Book Cover (만화책 단행본 표지 스타일)
+   */
+  private static drawComicFirstPage(
+    ctx: CanvasRenderingContext2D,
+    title: string,
+    category: string,
+    snippet: string,
+    date: string,
+    author?: string
+  ) {
+    // 1. Comic Spine (Left Binding Shadow)
+    const spineGrad = ctx.createLinearGradient(0, 0, 24, 0);
+    spineGrad.addColorStop(0, '#991b1b');
+    spineGrad.addColorStop(0.3, '#dc2626');
+    spineGrad.addColorStop(1, '#ea580c');
+    ctx.fillStyle = spineGrad;
+    ctx.fillRect(0, 0, 20, 530);
+
+    // Spine text (Vertical title)
+    ctx.save();
+    ctx.translate(14, 260);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText(`COMICS • ${title.slice(0, 15)}`, 0, 0);
+    ctx.restore();
+
+    // 2. Comic Cover Background
+    const coverGrad = ctx.createLinearGradient(20, 0, 380, 530);
+    coverGrad.addColorStop(0, '#1e1b4b');
+    coverGrad.addColorStop(0.5, '#2e1065');
+    coverGrad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = coverGrad;
+    ctx.fillRect(20, 0, 360, 530);
+
+    // 3. Comic Action Speedlines (배경 방사형 집중선)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1;
+    const centerX = 200;
+    const centerY = 280;
+    for (let angle = 0; angle < Math.PI * 2; angle += 0.18) {
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(centerX + Math.cos(angle) * 350, centerY + Math.sin(angle) * 350);
+      ctx.stroke();
+    }
+
+    // 4. Top Comic Magazine Banner (점프/코믹스 스타일 상단 헤더)
+    ctx.fillStyle = 'linear-gradient(90deg, #ea580c, #f59e0b)';
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(20, 16, 360, 30);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('★ COMICS DELUXE EDITION ★', 40, 35);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('DIGITAL MANGA', 280, 35);
+
+    // 5. Volume & Category Badge
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.roundRect(38, 62, 90, 24, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('VOL. 완결판', 48, 78);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(category, 140, 78);
+
+    // 6. Impactful Manga Title (볼드 타이포그래피 + 섀도우)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.font = '900 22px "Impact", sans-serif';
+    this.wrapText(ctx, title, 40, 126, 300, 28);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = '900 22px "Impact", sans-serif';
+    this.wrapText(ctx, title, 38, 124, 300, 28);
+
+    // 7. Author / Artist Credit
+    ctx.fillStyle = '#f97316';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(`글·그림: ${author || '만화 작가'} 著`, 38, 195);
+
+    // 8. Main Comic Art Panel Frame (만화 컷 연출 박스)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.fillRect(38, 215, 305, 195);
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(38, 215, 305, 195);
+
+    // Panel Inner Badge
+    ctx.fillStyle = '#f97316';
+    ctx.fillRect(48, 225, 75, 18);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('SYNOPSIS', 58, 237);
+
+    // Comic Teaser / Plot Text
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '11px sans-serif';
+    this.wrapText(
+      ctx,
+      `${snippet}\n소년 만화의 심장을 뛰게 하는 압도적인 명장면과 전설적인 서사가 디지털 고화질 스캔으로 펼쳐집니다.`,
+      48,
+      262,
+      285,
+      18
+    );
+
+    // 9. Comic Publisher Bar & Barcode (하단 출판 정보 및 바코드)
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(20, 435, 360, 95);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(20, 435, 360, 1);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('PICASA COMIC PUBLISHING', 38, 460);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(`발행일: ${date} • 초판 1쇄 인쇄`, 38, 478);
+
+    // Stylized Barcode
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(38, 490, 140, 24);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('|| | |||| | ||| ||', 44, 506);
+
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.roundRect(280, 455, 50, 22, 4);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('전연령', 290, 470);
   }
 
   private static wrapText(

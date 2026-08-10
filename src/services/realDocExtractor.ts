@@ -51,8 +51,11 @@ export class RealDocExtractor {
       }
     };
 
+    // Dynamic timeout: scales from 3.5s up to 25s for 1GB+ large Comic ZIP files
+    const dynamicTimeoutMs = Math.max(3500, Math.min(25000, Math.round((file.size / (1024 * 1024)) * 25)));
+
     const timeoutPromise = new Promise<RealDocParseResult>((_, reject) => {
-      setTimeout(() => reject(new Error('Extraction timeout')), 2500);
+      setTimeout(() => reject(new Error('Extraction timeout')), dynamicTimeoutMs);
     });
 
     try {
