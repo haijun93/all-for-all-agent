@@ -134,8 +134,8 @@ export const EditorModal: React.FC<EditorModalProps> = ({
       return;
     }
     // Calculate centered crop box based on ratio
-    const imgWidth = photo.exif.dimensions.width || 1000;
-    const imgHeight = photo.exif.dimensions.height || 1000;
+    const imgWidth = photo.width || photo.exif?.dimensions?.width || 1000;
+    const imgHeight = photo.height || photo.exif?.dimensions?.height || 1000;
     const currentRatio = imgWidth / imgHeight;
 
     let cropW = 1;
@@ -168,7 +168,7 @@ export const EditorModal: React.FC<EditorModalProps> = ({
               {photo.title}
             </h3>
             <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              {photo.exif.camera} • {photo.exif.dimensions.width}×{photo.exif.dimensions.height}
+              {photo.exif?.camera || photo.exif?.cameraMake || '디지털 사진'} • {photo.width || photo.exif?.dimensions?.width || 1920}×{photo.height || photo.exif?.dimensions?.height || 1080}
             </span>
           </div>
         </div>

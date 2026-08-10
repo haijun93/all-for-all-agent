@@ -1,17 +1,28 @@
 export interface PhotoExif {
-  camera: string;
-  lens: string;
-  focalLength: string;
-  aperture: string;
-  shutterSpeed: string;
-  iso: number;
-  dimensions: { width: number; height: number };
-  fileSize: string;
-  dateTaken: string;
+  camera?: string;
+  cameraMake?: string;
+  cameraModel?: string;
+  lens?: string;
+  focalLength?: string;
+  aperture?: string;
+  shutterSpeed?: string;
+  iso?: number;
+  exposureComp?: string;
+  dateTaken?: string;
+  fileSize?: string;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
   location?: {
     name: string;
-    lat: number;
-    lng: number;
+    latitude: number;
+    longitude: number;
+    lat?: number;
+    lng?: number;
+    city?: string;
+    province?: string;
+    country?: string;
   };
 }
 
@@ -28,74 +39,77 @@ export interface FaceTag {
 }
 
 export interface EditParams {
-  // Basic Fixes
+  brightness: number; // -100 to 100
+  contrast: number; // -100 to 100
+  saturation: number; // -100 to 100
+  fillLight: number; // 0 to 100 (Picasa special)
+  highlights: number; // -100 to 100
+  shadows: number; // -100 to 100
+  colorTemp?: number; // -100 to 100 (warm/cool)
+  temperature: number; // alias for colorTemp
+  tint: number; // -100 to 100
+  clarity?: number;
+  straighten: number; // -45 to 45 deg
+  rotation: number; // 0, 90, 180, 270
+  flipH: boolean;
+  flipV: boolean;
   crop?: {
     x: number;
     y: number;
     width: number;
     height: number;
   };
-  rotation: number; // 0, 90, 180, 270
-  straighten: number; // -45 to 45 deg
-  flipH: boolean;
-  flipV: boolean;
-  feelingLucky: boolean;
-  autoContrast: boolean;
-  autoColor: boolean;
-  redEyes: Array<{ x: number; y: number; radius: number }>;
-
-  // Tuning
-  fillLight: number; // 0 to 100
-  highlights: number; // -100 to 100
-  shadows: number; // -100 to 100
-  temperature: number; // -100 to 100 (Cool to Warm)
-  tint: number; // -100 to 100 (Green to Magenta)
-  brightness: number; // -100 to 100
-  contrast: number; // -100 to 100
-  saturation: number; // -100 to 100
-  clarity: number; // 0 to 100
-
-  // Creative Effects / Filters
-  filter: 'none' | 'bw' | 'sepia' | 'warmify' | 'vignette' | 'film' | 'lomo' | 'vintage60' | 'softFocus' | 'posterize' | 'cinema' | 'tiltShift' | 'inverted' | 'infrared';
-  filterStrength: number; // 0 to 100
-  vignetteStrength: number; // 0 to 100
-  grainStrength: number; // 0 to 100
-  tiltShiftY: number; // 0 to 100 percentage
+  filter?: string;
+  filterIntensity?: number; // 0 to 100
+  filterStrength: number;
+  vignetteStrength: number;
+  grainStrength: number;
+  tiltShiftY?: number;
+  feelingLucky?: boolean;
+  autoLucky?: boolean;
+  autoContrast?: boolean;
+  autoColor?: boolean;
+  redEyes?: Array<{ x: number; y: number; radius: number }>;
 }
 
 export interface Photo {
   id: string;
   title: string;
   url: string;
+  originalUrl: string;
   thumbnailUrl?: string;
-  originalUrl?: string;
-  date: string; // ISO format
-  folder: string;
-  albumIds: string[];
+  dateAdded?: number;
+  date?: string;
+  dateTaken?: string;
+  width?: number;
+  height?: number;
+  fileSize?: number; // in bytes
   isStarred: boolean;
+  folder?: string;
   tags: string[];
+  exif?: PhotoExif;
   faces: FaceTag[];
-  exif: PhotoExif;
+  albumIds: string[];
   editParams?: EditParams;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export interface Album {
   id: string;
-  name: string;
-  description: string;
+  title: string;
+  name?: string;
+  description?: string;
   coverPhotoId?: string;
-  photoCount?: number;
-  createdAt: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Person {
   id: string;
   name: string;
   avatarUrl: string;
-  photoCount: number;
+  photoCount?: number;
 }
 
-export type ViewMode = 'gallery' | 'collage' | 'people' | 'timeline';
-export type GroupBy = 'folder' | 'date' | 'none';
-export type ActiveTab = 'library' | 'album' | 'person' | 'folder' | 'starred' | 'search';
+export type ViewMode = 'gallery' | 'collage' | 'people' | 'timeline' | 'places';
+export type GroupBy = 'folder' | 'date' | 'place' | 'region';

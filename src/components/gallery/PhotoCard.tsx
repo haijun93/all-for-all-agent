@@ -87,7 +87,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({
           <span className="photo-card-title">{photo.title}</span>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="photo-card-meta">
-              {photo.exif.camera.split(' ')[0]} • {photo.exif.dimensions.width}×{photo.exif.dimensions.height}
+              {(photo.exif?.camera || photo.exif?.cameraMake || '사진').split(' ')[0]} • {photo.width || photo.exif?.dimensions?.width || 1920}×{photo.height || photo.exif?.dimensions?.height || 1080}
             </span>
             {photo.editParams && (
               <span

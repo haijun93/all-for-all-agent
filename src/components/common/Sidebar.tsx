@@ -9,6 +9,9 @@ import {
   ChevronDown,
   ChevronRight,
   FolderArchive,
+  MapPin,
+  Globe2,
+  Calendar
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -19,6 +22,9 @@ interface SidebarProps {
   people: Person[];
   folders: string[];
   tags: string[];
+  regions: string[];
+  places: string[];
+  dates: string[];
   totalPhotosCount: number;
   starredCount: number;
   onCreateAlbum: (name: string) => void;
@@ -32,6 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   people,
   folders,
   tags,
+  regions,
+  places,
+  dates,
   totalPhotosCount,
   starredCount,
   onCreateAlbum,
@@ -41,8 +50,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openSections, setOpenSections] = useState({
     albums: true,
     folders: true,
+    regions: true,
+    places: false,
+    dates: false,
     people: true,
-    tags: true,
+    tags: false,
   });
 
   const toggleSection = (key: keyof typeof openSections) => {
@@ -87,6 +99,111 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="sidebar-badge">{starredCount}</span>
           </li>
         </ul>
+      </div>
+
+      {/* Regions Section */}
+      <div>
+        <div
+          className="sidebar-section-title"
+          style={{ cursor: 'pointer' }}
+          onClick={() => toggleSection('regions')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {openSections.regions ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>🗺️ 지역/도시 (Regions)</span>
+          </div>
+          <span style={{ fontSize: '0.7rem' }}>{regions.length}</span>
+        </div>
+
+        {openSections.regions && (
+          <ul className="sidebar-nav-list">
+            {regions.map((region) => {
+              const isActive = activeCategory === 'region' && selectedId === region;
+              return (
+                <li
+                  key={region}
+                  className={`sidebar-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onSelectCategory('region', region)}
+                >
+                  <div className="sidebar-item-left">
+                    <Globe2 size={15} color="#34a853" />
+                    <span title={region}>{region}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Specific Places Section */}
+      <div>
+        <div
+          className="sidebar-section-title"
+          style={{ cursor: 'pointer' }}
+          onClick={() => toggleSection('places')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {openSections.places ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>📍 촬영 장소 (Places)</span>
+          </div>
+          <span style={{ fontSize: '0.7rem' }}>{places.length}</span>
+        </div>
+
+        {openSections.places && (
+          <ul className="sidebar-nav-list">
+            {places.map((place) => {
+              const isActive = activeCategory === 'place' && selectedId === place;
+              return (
+                <li
+                  key={place}
+                  className={`sidebar-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onSelectCategory('place', place)}
+                >
+                  <div className="sidebar-item-left">
+                    <MapPin size={15} color="#ea4335" />
+                    <span title={place}>{place}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Dates by Year/Month */}
+      <div>
+        <div
+          className="sidebar-section-title"
+          style={{ cursor: 'pointer' }}
+          onClick={() => toggleSection('dates')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {openSections.dates ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>📅 날짜별 (Dates)</span>
+          </div>
+          <span style={{ fontSize: '0.7rem' }}>{dates.length}</span>
+        </div>
+
+        {openSections.dates && (
+          <ul className="sidebar-nav-list">
+            {dates.map((dateStr) => {
+              const isActive = activeCategory === 'date' && selectedId === dateStr;
+              return (
+                <li
+                  key={dateStr}
+                  className={`sidebar-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onSelectCategory('date', dateStr)}
+                >
+                  <div className="sidebar-item-left">
+                    <Calendar size={15} color="#4285f4" />
+                    <span>{dateStr}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {/* Albums Section */}
@@ -143,7 +260,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div className="sidebar-item-left">
                     <FolderArchive size={15} color="#4285f4" />
-                    <span>{album.name}</span>
+                    <span>{album.title}</span>
                   </div>
                 </li>
               );

@@ -11,7 +11,8 @@ import {
   Calendar,
   RotateCcw,
   Sparkles,
-  FolderSearch
+  FolderSearch,
+  Compass
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -47,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="app-title">
             Picasa <span style={{ color: '#4285f4' }}>Web</span>
-            <span className="app-version">v2.5 Cross-Platform</span>
+            <span className="app-version">v2.5 PRO</span>
           </div>
         </div>
       </div>
@@ -62,11 +63,18 @@ export const Header: React.FC<HeaderProps> = ({
           <span>라이브러리</span>
         </button>
         <button
-          className={`btn btn-sm ${viewMode === 'collage' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => onViewModeChange('collage')}
+          className={`btn btn-sm ${viewMode === 'places' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => onViewModeChange('places')}
         >
-          <Layers size={14} />
-          <span>콜라주 메이커</span>
+          <Compass size={14} />
+          <span>장소 & 지역</span>
+        </button>
+        <button
+          className={`btn btn-sm ${viewMode === 'timeline' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => onViewModeChange('timeline')}
+        >
+          <Calendar size={14} />
+          <span>날짜/타임라인</span>
         </button>
         <button
           className={`btn btn-sm ${viewMode === 'people' ? 'btn-primary' : 'btn-ghost'}`}
@@ -76,11 +84,11 @@ export const Header: React.FC<HeaderProps> = ({
           <span>인물 (People)</span>
         </button>
         <button
-          className={`btn btn-sm ${viewMode === 'timeline' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => onViewModeChange('timeline')}
+          className={`btn btn-sm ${viewMode === 'collage' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => onViewModeChange('collage')}
         >
-          <Calendar size={14} />
-          <span>타임라인</span>
+          <Layers size={14} />
+          <span>콜라주 메이커</span>
         </button>
       </div>
 
@@ -91,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
           <input
             type="text"
             className="search-input"
-            placeholder="사진 제목, 태그, 인물, 폴더 검색..."
+            placeholder="사진 제목, 태그, 인물, 폴더, 장소, 도시 검색..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -133,11 +141,11 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           className="btn btn-secondary btn-sm"
           onClick={onOpenFolderManager}
-          title="내 컴퓨터(Windows / Mac)의 실제 사진 폴더 스캔 및 인덱싱"
+          title="내 컴퓨터의 실제 사진 폴더 스캔 및 인덱싱"
           style={{ border: '1px solid rgba(66, 133, 244, 0.4)', background: 'rgba(66, 133, 244, 0.12)', color: '#60a5fa' }}
         >
           <FolderSearch size={15} color="#60a5fa" />
-          <span>폴더 관리자 (로컬 스캔)</span>
+          <span>폴더 관리자</span>
         </button>
 
         <button className="btn btn-primary btn-sm" onClick={onOpenImport}>

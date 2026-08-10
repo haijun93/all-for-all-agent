@@ -5,6 +5,7 @@ import { Header } from './components/common/Header';
 import { Sidebar } from './components/common/Sidebar';
 import { BottomBar } from './components/common/BottomBar';
 import { GalleryView } from './components/gallery/GalleryView';
+import { PlacesView } from './components/places/PlacesView';
 import { ImportModal } from './components/gallery/ImportModal';
 import { FolderManagerModal } from './components/gallery/FolderManagerModal';
 import { EditorModal } from './components/editor/EditorModal';
@@ -57,7 +58,7 @@ export const App: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Derived lists
+  // Derived metadata lists
   const folders = useMemo(() => {
     const set = new Set<string>();
     photos.forEach((p) => p.folder && set.add(p.folder));
@@ -68,6 +69,38 @@ export const App: React.FC = () => {
     const set = new Set<string>();
     photos.forEach((p) => p.tags?.forEach((t) => set.add(t)));
     return Array.from(set);
+  }, [photos]);
+
+  const regions = useMemo(() => {
+    const set = new Set<string>();
+    photos.forEach((p) => {
+      const loc = p.exif?.location;
+      if (loc) {
+        const key = `${loc.country ? loc.country + ' • ' : ''}${loc.province || loc.city || ''}`;
+        if (key.trim()) set.add(key.trim());
+      }
+    });
+    return Array.from(set);
+  }, [photos]);
+
+  const places = useMemo(() => {
+    const set = new Set<string>();
+    photos.forEach((p) => {
+      const spot = p.exif?.location?.name;
+      if (spot) set.add(spot);
+    });
+    return Array.from(set);
+  }, [photos]);
+
+  const dates = useMemo(() => {
+    const set = new Set<string>();
+    photos.forEach((p) => {
+      if (p.dateTaken) {
+        const parts = p.dateTaken.split('-');
+        if (parts.length >= 2) set.add(`${parts[0]}년 ${parseInt(parts[1], 10)}월`);
+      }
+    });
+    return Array.from(set).sort().reverse();
   }, [photos]);
 
   const starredCount = useMemo(() => {
@@ -84,7 +117,18 @@ export const App: React.FC = () => {
         const matchesFolder = photo.folder?.toLowerCase().includes(q);
         const matchesTags = photo.tags?.some((t) => t.toLowerCase().includes(q));
         const matchesFaces = photo.faces?.some((f) => f.personName.toLowerCase().includes(q));
-        if (!matchesTitle && !matchesFolder && !matchesTags && !matchesFaces) {
+        const matchesPlace = photo.exif?.location?.name?.toLowerCase().includes(q);
+        const matchesCity = photo.exif?.location?.city?.toLowerCase().includes(q);
+        const matchesCountry = photo.exif?.location?.country?.toLowerCase().includes(q);
+        if (
+          !matchesTitle &&
+          !matchesFolder &&
+          !matchesTags &&
+          !matchesFaces &&
+          !matchesPlace &&
+          !matchesCity &&
+          !matchesCountry
+        ) {
           return false;
         }
       }
@@ -104,6 +148,21 @@ export const App: React.FC = () => {
       }
       if (activeCategory === 'tag' && selectedCategoryId) {
         return photo.tags?.includes(selectedCategoryId);
+      }
+      if (activeCategory === 'region' && selectedCategoryId) {
+        const loc = photo.exif?.location;
+        const key = `${loc?.country ? loc.country + ' • ' : ''}${loc?.province || loc?.city || ''}`;
+        return key.trim() === selectedCategoryId;
+      }
+      if (activeCategory === 'place' && selectedCategoryId) {
+        return photo.exif?.location?.name === selectedCategoryId;
+      }
+      if (activeCategory === 'date' && selectedCategoryId) {
+        if (photo.dateTaken) {
+          const parts = photo.dateTaken.split('-');
+          const dStr = `${parts[0]}년 ${parseInt(parts[1], 10)}월`;
+          return dStr === selectedCategoryId;
+        }
       }
 
       return true;
@@ -243,6 +302,9 @@ export const App: React.FC = () => {
           people={people}
           folders={folders}
           tags={tags}
+          regions={regions}
+          places={places}
+          dates={dates}
           totalPhotosCount={photos.length}
           starredCount={starredCount}
           onCreateAlbum={handleCreateAlbum}
@@ -275,6 +337,14 @@ export const App: React.FC = () => {
               onOpenLightbox={(photo) => setLightboxPhoto(photo)}
               onOpenEditor={(photo) => setEditorPhoto(photo)}
               onSelectGroup={handleSelectGroup}
+            />
+          )}
+
+          {viewMode === 'places' && (
+            <PlacesView
+              photos={photos}
+              onOpenLightbox={(photo) => setLightboxPhoto(photo)}
+              onOpenEditor={(photo) => setEditorPhoto(photo)}
             />
           )}
 

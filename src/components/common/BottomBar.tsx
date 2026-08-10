@@ -1,7 +1,6 @@
 import React from 'react';
 import type { GroupBy } from '../../types/photo';
 import {
-  Grid,
   Edit3,
   Layers,
   Star,
@@ -11,7 +10,9 @@ import {
   ZoomIn,
   ZoomOut,
   FolderTree,
-  Calendar
+  Calendar,
+  MapPin,
+  Globe2
 } from 'lucide-react';
 
 interface BottomBarProps {
@@ -98,59 +99,89 @@ export const BottomBar: React.FC<BottomBarProps> = ({
               onClick={onSelectAll}
               title="모든 사진 선택"
             >
-              <CheckSquare size={13} />
+              <CheckSquare size={14} />
               <span>전체 선택</span>
             </button>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               총 {totalCount}장의 사진
             </span>
           </>
         )}
       </div>
 
-      {/* Center: Grouping Mode */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#11151c', padding: '3px 8px', borderRadius: 8 }}>
-        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>정렬:</span>
-        <button
-          className={`btn btn-sm ${groupBy === 'folder' ? 'btn-secondary' : 'btn-ghost'}`}
-          style={{ fontSize: '0.74rem', padding: '3px 8px' }}
-          onClick={() => onGroupByChange('folder')}
-        >
-          <FolderTree size={12} />
-          <span>폴더별</span>
-        </button>
-        <button
-          className={`btn btn-sm ${groupBy === 'date' ? 'btn-secondary' : 'btn-ghost'}`}
-          style={{ fontSize: '0.74rem', padding: '3px 8px' }}
-          onClick={() => onGroupByChange('date')}
-        >
-          <Calendar size={12} />
-          <span>날짜별</span>
-        </button>
-        <button
-          className={`btn btn-sm ${groupBy === 'none' ? 'btn-secondary' : 'btn-ghost'}`}
-          style={{ fontSize: '0.74rem', padding: '3px 8px' }}
-          onClick={() => onGroupByChange('none')}
-        >
-          <Grid size={12} />
-          <span>전체</span>
-        </button>
+      {/* Center: Grouping Controls */}
+      <div className="bottombar-view-controls">
+        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>정렬:</span>
+        <div style={{ display: 'flex', background: '#131822', padding: 2, borderRadius: 6, gap: 2 }}>
+          <button
+            className={`btn btn-sm ${groupBy === 'folder' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+            onClick={() => onGroupByChange('folder')}
+            title="폴더별 그룹화"
+          >
+            <FolderTree size={12} />
+            <span>폴더별</span>
+          </button>
+          <button
+            className={`btn btn-sm ${groupBy === 'date' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+            onClick={() => onGroupByChange('date')}
+            title="촬영 날짜별 그룹화"
+          >
+            <Calendar size={12} />
+            <span>날짜별</span>
+          </button>
+          <button
+            className={`btn btn-sm ${groupBy === 'region' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+            onClick={() => onGroupByChange('region')}
+            title="지역/도시별 그룹화"
+          >
+            <Globe2 size={12} />
+            <span>지역별</span>
+          </button>
+          <button
+            className={`btn btn-sm ${groupBy === 'place' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+            onClick={() => onGroupByChange('place')}
+            title="촬영 스팟/장소별 그룹화"
+          >
+            <MapPin size={12} />
+            <span>장소별</span>
+          </button>
+        </div>
       </div>
 
-      {/* Right: Signature Picasa Zoom Slider */}
+      {/* Right: Signature Picasa Live Thumbnail Zoom Slider */}
       <div className="zoom-slider-container">
-        <ZoomOut size={15} />
+        <button
+          className="btn btn-ghost btn-icon-only"
+          style={{ padding: 2 }}
+          onClick={() => onThumbSizeChange(Math.max(120, thumbSize - 30))}
+          title="썸네일 축소"
+        >
+          <ZoomOut size={14} color="var(--text-muted)" />
+        </button>
+
         <input
           type="range"
-          className="zoom-range-input"
-          min={120}
-          max={460}
-          step={10}
+          min="120"
+          max="460"
+          step="10"
+          className="zoom-slider"
           value={thumbSize}
           onChange={(e) => onThumbSizeChange(Number(e.target.value))}
-          title="썸네일 크기 조절 (Picasa Zoom Slider)"
+          title={`썸네일 크기: ${thumbSize}px`}
         />
-        <ZoomIn size={16} />
+
+        <button
+          className="btn btn-ghost btn-icon-only"
+          style={{ padding: 2 }}
+          onClick={() => onThumbSizeChange(Math.min(460, thumbSize + 30))}
+          title="썸네일 확대"
+        >
+          <ZoomIn size={14} color="var(--text-muted)" />
+        </button>
       </div>
     </footer>
   );
