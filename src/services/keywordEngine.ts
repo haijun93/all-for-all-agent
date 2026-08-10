@@ -42,6 +42,10 @@ const CATEGORY_RULES: Array<{ category: string; terms: string[] }> = [
     category: '👥 인사 / 총무 / 행정',
     terms: ['근로계약서', '인사평가', '급여명세서', '채용공고', '복무규정', '퇴직금', '신청서', '출장보고서', '회의록', '서약서'],
   },
+  {
+    category: '📚 도서 / 전자책 (e-Book)',
+    terms: ['소설', '에세이', '인문', '기술서', '챕터', 'chapter', '저자', '출판사', '발행일', '전자책', 'epub', '독서', '문학', '가이드북'],
+  },
 ];
 
 export class KeywordEngine {

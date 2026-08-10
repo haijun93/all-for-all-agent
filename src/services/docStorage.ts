@@ -144,6 +144,7 @@ export class DocStorageService {
     else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') format = 'xlsx';
     else if (ext === 'hwp') format = 'hwp';
     else if (ext === 'hwpx') format = 'hwpx';
+    else if (ext === 'epub') format = 'epub';
     else if (ext === 'pptx' || ext === 'ppt') format = 'pptx';
 
     const title = file.name.replace(/\.[^/.]+$/, '');

@@ -18,6 +18,7 @@ const FORMAT_CONFIG: Record<DocFormat, { label: string; bg: string; color: strin
   xls: { label: 'EXCEL', bg: 'rgba(16, 124, 65, 0.9)', color: '#ffffff' },
   hwp: { label: '한글(HWP)', bg: 'rgba(0, 85, 170, 0.9)', color: '#ffffff' },
   hwpx: { label: 'HWPX', bg: 'rgba(0, 102, 204, 0.9)', color: '#ffffff' },
+  epub: { label: 'EPUB', bg: 'rgba(147, 51, 234, 0.9)', color: '#ffffff' },
   pptx: { label: 'PPT', bg: 'rgba(210, 71, 38, 0.9)', color: '#ffffff' },
   txt: { label: 'TXT', bg: 'rgba(100, 116, 139, 0.9)', color: '#ffffff' },
 };

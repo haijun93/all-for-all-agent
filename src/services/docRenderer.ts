@@ -20,6 +20,7 @@ export class DocRendererService {
       xls: { bg: '#dcfce7', accent: '#16a34a', label: 'XLS' },
       hwp: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWP' },
       hwpx: { bg: '#e0f2fe', accent: '#0284c7', label: 'HWPX' },
+      epub: { bg: '#f3e8ff', accent: '#9333ea', label: 'EPUB' },
       pptx: { bg: '#ffedd5', accent: '#ea580c', label: 'PPTX' },
       txt: { bg: '#f1f5f9', accent: '#64748b', label: 'TXT' },
     };
@@ -90,6 +91,8 @@ export class DocRendererService {
       this.drawExcelFirstPage(ctx, title, category, date);
     } else if (format === 'hwp' || format === 'hwpx') {
       this.drawHwpFirstPage(ctx, title, category, snippet, date, author);
+    } else if (format === 'epub') {
+      this.drawEpubFirstPage(ctx, title, category, snippet, date, author);
     } else {
       // docx, doc, txt, pptx
       this.drawWordFirstPage(ctx, title, category, snippet, date, author);
@@ -402,6 +405,95 @@ export class DocRendererService {
     ctx.font = '9px sans-serif';
     ctx.fillText(`(갑) 발주사: 주식회사 알파 (대표이사 서명/인)`, 34, 412);
     ctx.fillText(`(을) 수급사: ${author || '주식회사 베타'} (대표이사 서명/인)`, 34, 436);
+  }
+
+  /**
+   * EPUB eBook Book Cover & Chapter 1 Preview Style
+   */
+  private static drawEpubFirstPage(
+    ctx: CanvasRenderingContext2D,
+    title: string,
+    category: string,
+    snippet: string,
+    date: string,
+    author?: string
+  ) {
+    // Book Spine Shadow on the left
+    const grad = ctx.createLinearGradient(0, 0, 30, 0);
+    grad.addColorStop(0, '#581c87');
+    grad.addColorStop(0.3, '#7e22ce');
+    grad.addColorStop(1, '#9333ea');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 18, 530);
+
+    // Book Cover Inner Frame
+    ctx.fillStyle = '#faf5ff';
+    ctx.fillRect(18, 0, 362, 530);
+
+    // Top eBook Badge
+    ctx.fillStyle = '#f3e8ff';
+    ctx.beginPath();
+    ctx.roundRect(36, 28, 70, 22, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#9333ea';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('📚 EPUB e-Book', 42, 43);
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(category, 120, 43);
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(date, 300, 43);
+
+    // Book Title Box (Editorial Cover Design)
+    ctx.fillStyle = '#581c87';
+    ctx.font = 'bold 19px "Georgia", serif';
+    this.wrapText(ctx, title, 36, 95, 310, 26);
+
+    ctx.fillStyle = '#7e22ce';
+    ctx.font = 'italic 12px sans-serif';
+    ctx.fillText(`저자: ${author || '전자책 작가'} 지음`, 36, 170);
+
+    // Decorative Book Divider
+    ctx.strokeStyle = '#d8b4fe';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(36, 185);
+    ctx.lineTo(340, 185);
+    ctx.stroke();
+
+    // Chapter 1 / Teaser Abstract
+    ctx.fillStyle = '#3b0764';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('Chapter 1. 시작하며 (Prologue)', 36, 215);
+
+    ctx.fillStyle = '#4b5563';
+    ctx.font = '11px "Georgia", serif';
+    this.wrapText(
+      ctx,
+      `${snippet}\n본 전자책은 언제 어디서나 독자가 손쉽게 읽을 수 있도록 표준 EPUB 리플로우(Reflowable) 규격을 준수하여 제작되었습니다.`,
+      36,
+      238,
+      310,
+      18
+    );
+
+    // Publisher & ISBN Footer
+    ctx.fillStyle = '#f3e8ff';
+    ctx.fillRect(36, 430, 310, 60);
+    ctx.strokeStyle = '#e9d5ff';
+    ctx.strokeRect(36, 430, 310, 60);
+
+    ctx.fillStyle = '#6b21a8';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('Picasa Digital Publishing', 48, 452);
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '9px sans-serif';
+    ctx.fillText('ISBN 979-11-0000-000-0 • EPUB 3.0 Format', 48, 472);
   }
 
   private static wrapText(

@@ -18,6 +18,7 @@ import { PeopleManager } from './components/people/PeopleManager';
 
 import { FastDocIndex } from './services/fastDocIndex';
 import { ProgressiveDocWorker } from './services/progressiveDocWorker';
+import { BackgroundIndexer } from './services/backgroundIndexer';
 
 // Document Studio Components
 import { DocSidebar } from './components/documents/DocSidebar';
@@ -25,6 +26,7 @@ import { DocGalleryView } from './components/documents/DocGalleryView';
 import { DocBottomBar } from './components/documents/DocBottomBar';
 import { DocLightboxModal } from './components/documents/DocLightboxModal';
 import { DocFolderManagerModal } from './components/documents/DocFolderManagerModal';
+import { IndexingProgressHUD } from './components/documents/IndexingProgressHUD';
 
 export const App: React.FC = () => {
   // App Mode (Photos vs Documents)
@@ -93,14 +95,25 @@ export const App: React.FC = () => {
     loadPhotoData();
     loadDocData();
 
-    // Subscribe to Progressive Worker updates for background high-res rendering
-    const unsubscribe = ProgressiveDocWorker.subscribe((updatedDoc) => {
+    // 1. Live stream new documents discovered by background indexer
+    const unsubStream = BackgroundIndexer.subscribeDocStream((newDoc) => {
+      setDocuments((prev) => {
+        if (prev.some((d) => d.id === newDoc.id)) return prev;
+        return [newDoc, ...prev];
+      });
+    });
+
+    // 2. Subscribe to Progressive Worker updates for background high-res rendering
+    const unsubWorker = ProgressiveDocWorker.subscribe((updatedDoc) => {
       setDocuments((prev) =>
         prev.map((d) => (d.id === updatedDoc.id ? { ...d, thumbnailUrl: updatedDoc.thumbnailUrl } : d))
       );
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubStream();
+      unsubWorker();
+    };
   }, [loadPhotoData, loadDocData]);
 
   // Reset category selection when mode changes
@@ -586,6 +599,9 @@ export const App: React.FC = () => {
           />
         )
       )}
+
+      {/* Background Indexing Speedometer & HUD */}
+      <IndexingProgressHUD />
 
       {/* Fullscreen Modals & Overlays */}
       <DocLightboxModal

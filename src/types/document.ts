@@ -1,4 +1,4 @@
-export type DocFormat = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls' | 'hwp' | 'hwpx' | 'pptx' | 'txt';
+export type DocFormat = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls' | 'hwp' | 'hwpx' | 'pptx' | 'txt' | 'epub';
 
 export interface DocumentItem {
   id: string;
@@ -13,7 +13,7 @@ export interface DocumentItem {
   previewSnippet?: string;
   extractedText: string;
   keywords: string[];
-  category: string; // e.g. 사업계획서, 계약서, 재무/정산, 보고서, 견적서
+  category: string; // e.g. 사업계획서, 계약서, 재무/정산, 보고서, 도서/전자책, 견적서
   folder?: string;
   isStarred: boolean;
   author?: string;
