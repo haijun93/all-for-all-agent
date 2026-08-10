@@ -1,9 +1,8 @@
 import type { DocumentItem, DocFormat } from '../types/document';
-import { DocRendererService } from './docRenderer';
 import { KeywordEngine } from './keywordEngine';
 import { FastDocIndex } from './fastDocIndex';
 import { DocStorageService } from './docStorage';
-import { ProgressiveDocWorker } from './progressiveDocWorker';
+import { RealDocExtractor } from './realDocExtractor';
 
 export interface IndexingStatus {
   isIndexing: boolean;
@@ -62,9 +61,9 @@ export class BackgroundIndexer {
   }
 
   /**
-   * Generates a 0.001ms instant document item
+   * Generates document item with REAL 1st page visual thumbnail extracted from actual binary file
    */
-  public static createInstantDocItem(file: File, folderPath: string): DocumentItem {
+  public static async createRealDocItem(file: File, folderPath: string): Promise<DocumentItem> {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
     let format: DocFormat = 'txt';
     if (ext === 'pdf') format = 'pdf';
@@ -78,16 +77,19 @@ export class BackgroundIndexer {
     const title = file.name.replace(/\.[^/.]+$/, '');
     const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
 
-    const quickAnalysis = KeywordEngine.analyzeDocumentText(title, `${title} ${folderPath}`);
+    const initialAnalysis = KeywordEngine.analyzeDocumentText(title, `${title} ${folderPath}`);
 
-    // Generate crisp 1st page visual thumbnail immediately (~1.2ms)
-    const visualThumbnail = DocRendererService.generateDocumentFirstPageThumbnail(
-      title,
+    // Extract REAL 1st page visual thumbnail & text from physical file
+    const realData = await RealDocExtractor.extractRealDocumentData(
+      file,
       format,
-      quickAnalysis.category,
-      quickAnalysis.snippet,
-      dateStr,
-      '로컬 작성자'
+      initialAnalysis.category
+    );
+
+    // Re-analyze keywords on real extracted text
+    const deepAnalysis = KeywordEngine.analyzeDocumentText(
+      title,
+      `${title}\n${realData.extractedText}`
     );
 
     return {
@@ -98,12 +100,12 @@ export class BackgroundIndexer {
       format,
       dateCreated: dateStr,
       dateModified: dateStr,
-      pageCount: format === 'pdf' ? 10 : format === 'epub' ? 250 : format === 'xlsx' ? 3 : 5,
-      thumbnailUrl: visualThumbnail,
-      previewSnippet: quickAnalysis.snippet,
-      extractedText: `${title} (${format.toUpperCase()}) - ${folderPath}`,
-      keywords: quickAnalysis.keywords,
-      category: quickAnalysis.category,
+      pageCount: realData.pageCount,
+      thumbnailUrl: realData.thumbnailUrl,
+      previewSnippet: deepAnalysis.snippet,
+      extractedText: realData.extractedText,
+      keywords: deepAnalysis.keywords,
+      category: deepAnalysis.category,
       folder: folderPath,
       isStarred: false,
       author: '로컬 사용자',
@@ -125,7 +127,7 @@ export class BackgroundIndexer {
       progressPercent: 0,
       docsPerSecond: 0,
       elapsedMs: 0,
-      statusMessage: '디렉토리 고속 스트림 분석 중...',
+      statusMessage: '디렉토리 실시간 1페이지 파싱 및 인덱싱 중...',
       isMinimized: false,
     };
     this.notifyStatus();
@@ -140,7 +142,9 @@ export class BackgroundIndexer {
           if (entry.kind === 'file') {
             if (/\.(pdf|docx?|xlsx?|hwp|hwpx|epub|pptx?|txt)$/i.test(entry.name)) {
               const file = await entry.getFile();
-              const doc = this.createInstantDocItem(file, path);
+              
+              // Extract real 1st page visual thumbnail
+              const doc = await this.createRealDocItem(file, path);
               instantDocs.push(doc);
 
               // Live stream each document to UI immediately
@@ -156,7 +160,7 @@ export class BackgroundIndexer {
               this.status.totalFound = instantDocs.length;
               this.status.docsPerSecond = speed;
               this.status.elapsedMs = Math.round(elapsed);
-              this.status.statusMessage = `⚡️ '${file.name}' 실시간 인덱싱 스트림 중...`;
+              this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
               this.notifyStatus();
             }
           } else if (entry.kind === 'directory') {
@@ -170,7 +174,6 @@ export class BackgroundIndexer {
 
       // Bulk persist to IndexedDB
       await DocStorageService.saveDocumentsBulk(instantDocs);
-      ProgressiveDocWorker.enqueueDocuments(instantDocs);
 
       const totalElapsed = Math.max(1, performance.now() - startTime);
       const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
@@ -179,7 +182,7 @@ export class BackgroundIndexer {
       this.status.progressPercent = 100;
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
-      this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 문서 (${totalElapsed.toFixed(0)}ms 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+      this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
       this.notifyStatus();
     } catch (err) {
       console.error('Background indexer error:', err);
@@ -203,7 +206,7 @@ export class BackgroundIndexer {
       progressPercent: 0,
       docsPerSecond: 0,
       elapsedMs: 0,
-      statusMessage: '파일 스트림 처리 중...',
+      statusMessage: '실제 1페이지 추출 스트림 처리 중...',
       isMinimized: false,
     };
     this.notifyStatus();
@@ -217,7 +220,8 @@ export class BackgroundIndexer {
         const folderPath = file.webkitRelativePath
           ? file.webkitRelativePath.split('/').slice(0, -1).join('/')
           : '내 문서';
-        const doc = this.createInstantDocItem(file, folderPath);
+
+        const doc = await this.createRealDocItem(file, folderPath);
         instantDocs.push(doc);
 
         FastDocIndex.addDocument(doc);
@@ -231,13 +235,12 @@ export class BackgroundIndexer {
         this.status.progressPercent = Math.round(((i + 1) / files.length) * 100);
         this.status.docsPerSecond = speed;
         this.status.elapsedMs = Math.round(elapsed);
-        this.status.statusMessage = `⚡️ '${file.name}' 스트림 처리 중...`;
+        this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
         this.notifyStatus();
       }
     }
 
     await DocStorageService.saveDocumentsBulk(instantDocs);
-    ProgressiveDocWorker.enqueueDocuments(instantDocs);
 
     const totalElapsed = Math.max(1, performance.now() - startTime);
     const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
@@ -246,7 +249,7 @@ export class BackgroundIndexer {
     this.status.progressPercent = 100;
     this.status.docsPerSecond = finalSpeed;
     this.status.elapsedMs = Math.round(totalElapsed);
-    this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 문서 (${totalElapsed.toFixed(0)}ms 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+    this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
     this.notifyStatus();
   }
 }

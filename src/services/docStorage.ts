@@ -2,6 +2,7 @@ import type { DocumentItem, DocFormat } from '../types/document';
 import { SAMPLE_DOCUMENTS } from './sampleDocs';
 import { KeywordEngine } from './keywordEngine';
 import { DocRendererService } from './docRenderer';
+import { RealDocExtractor } from './realDocExtractor';
 
 const DB_NAME = 'PicasaWebDB';
 const DB_VERSION = 2; // Incremented for documents store
@@ -176,17 +177,18 @@ export class DocStorageService {
     const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
     const folder = folderName || (file.webkitRelativePath ? file.webkitRelativePath.split('/')[0] : '내 문서 (Documents)');
 
-    // Extract text simulation from filename and properties
-    const mockContent = `${title} 본문 문서 내용입니다. ${folder} 폴더에서 스캔되었으며 ${format.toUpperCase()} 포맷으로 저장된 정식 비즈니스 문서입니다.`;
-    const analysis = KeywordEngine.analyzeDocumentText(title, mockContent);
+    const initialAnalysis = KeywordEngine.analyzeDocumentText(title, `${title} ${folder}`);
 
-    const thumbnailUrl = DocRendererService.generateDocumentFirstPageThumbnail(
-      title,
+    // Extract REAL 1st page visual thumbnail and text from binary file
+    const realData = await RealDocExtractor.extractRealDocumentData(
+      file,
       format,
-      analysis.category,
-      analysis.snippet,
-      dateStr,
-      '로컬 작성자'
+      initialAnalysis.category
+    );
+
+    const deepAnalysis = KeywordEngine.analyzeDocumentText(
+      title,
+      `${title}\n${realData.extractedText}`
     );
 
     const newDoc: DocumentItem = {
@@ -197,12 +199,12 @@ export class DocStorageService {
       format,
       dateCreated: dateStr,
       dateModified: dateStr,
-      pageCount: format === 'pdf' ? 12 : format === 'xlsx' ? 3 : 5,
-      thumbnailUrl,
-      previewSnippet: analysis.snippet,
-      extractedText: mockContent,
-      keywords: analysis.keywords,
-      category: analysis.category,
+      pageCount: realData.pageCount,
+      thumbnailUrl: realData.thumbnailUrl,
+      previewSnippet: deepAnalysis.snippet,
+      extractedText: realData.extractedText,
+      keywords: deepAnalysis.keywords,
+      category: deepAnalysis.category,
       folder,
       isStarred: false,
       author: '로컬 사용자',
