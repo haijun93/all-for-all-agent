@@ -704,37 +704,103 @@ export class RealDocExtractor {
 
   /**
    * 7. Real Comic Book (.zip / .cbz) Cover & 1st Page Image Extraction
+   *  - Extracts direct 1st page / cover image (001.jpg, cover.jpg, etc.) with accurate natural sort
+   *  - Automatically traverses nested volume ZIPs (e.g. dragonball.zip -> 01권.zip -> 001.jpg)
+   *  - Multi-level directory natural sorting
    */
   private static async extractComicZip(file: File, category: string): Promise<RealDocParseResult> {
+    const title = file.name.replace(/\.[^/.]+$/, '');
     const zip = await JSZip.loadAsync(file);
 
-    // Collect all valid image entries inside the zip
-    const imageNames = Object.keys(zip.files).filter((name) => {
+    // Natural sort comparator for comic pages and folders
+    const naturalSort = (a: string, b: string) => {
+      const aIsCover = /(cover|표지|front|title|000\.|001\.)/i.test(a);
+      const bIsCover = /(cover|표지|front|title|000\.|001\.)/i.test(b);
+
+      const aSegments = a.split('/');
+      const bSegments = b.split('/');
+
+      // Compare folder depth/name first
+      for (let i = 0; i < Math.min(aSegments.length, bSegments.length) - 1; i++) {
+        const cmp = aSegments[i].localeCompare(bSegments[i], undefined, { numeric: true, sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+      }
+      if (aSegments.length !== bSegments.length) {
+        return aSegments.length - bSegments.length;
+      }
+
+      if (aIsCover !== bIsCover) return aIsCover ? -1 : 1;
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    };
+
+    // 1. Check for direct images inside the archive
+    let imageNames = Object.keys(zip.files).filter((name) => {
       const entry = zip.files[name];
-      if (entry.dir || name.includes('__MACOSX') || name.startsWith('.')) return false;
+      if (entry.dir || name.includes('__MACOSX') || name.startsWith('.') || name.includes('/.')) return false;
       return /\.(jpe?g|png|webp|bmp|gif)$/i.test(name);
     });
 
     if (imageNames.length > 0) {
-      // Natural sort to pick the actual 1st page (e.g., 001.jpg, cover.jpg)
-      imageNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      imageNames.sort(naturalSort);
 
       const firstImageFile = zip.file(imageNames[0]);
       if (firstImageFile) {
         const base64 = await firstImageFile.async('base64');
         const ext = imageNames[0].split('.').pop()?.toLowerCase() || 'jpeg';
         const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-        const title = file.name.replace(/\.[^/.]+$/, '');
 
         return {
           thumbnailUrl: `data:${mime};base64,${base64}`,
-          extractedText: `[만화책 코믹스] ${title}\n총 ${imageNames.length}페이지 수록\n첫 페이지: ${imageNames[0]}`,
+          extractedText: `[만화책 코믹스] ${title}\n총 ${imageNames.length}페이지 수록\n첫 페이지 표지: ${imageNames[0]}`,
           pageCount: imageNames.length,
         };
       }
     }
 
-    const title = file.name.replace(/\.[^/.]+$/, '');
+    // 2. Check for nested volume ZIP/CBZ archives (e.g. dragonball.zip -> 01권.zip -> 001.jpg)
+    const nestedZipNames = Object.keys(zip.files).filter((name) => {
+      const entry = zip.files[name];
+      if (entry.dir || name.includes('__MACOSX') || name.startsWith('.') || name.includes('/.')) return false;
+      return /\.(zip|cbz)$/i.test(name);
+    });
+
+    if (nestedZipNames.length > 0) {
+      nestedZipNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+      const firstNestedZipFile = zip.file(nestedZipNames[0]);
+      if (firstNestedZipFile) {
+        try {
+          const nestedZipBuffer = await firstNestedZipFile.async('arraybuffer');
+          const nestedZip = await JSZip.loadAsync(nestedZipBuffer);
+
+          const nestedImageNames = Object.keys(nestedZip.files).filter((name) => {
+            const entry = nestedZip.files[name];
+            if (entry.dir || name.includes('__MACOSX') || name.startsWith('.') || name.includes('/.')) return false;
+            return /\.(jpe?g|png|webp|bmp|gif)$/i.test(name);
+          });
+
+          if (nestedImageNames.length > 0) {
+            nestedImageNames.sort(naturalSort);
+            const nestedFirstImg = nestedZip.file(nestedImageNames[0]);
+            if (nestedFirstImg) {
+              const base64 = await nestedFirstImg.async('base64');
+              const ext = nestedImageNames[0].split('.').pop()?.toLowerCase() || 'jpeg';
+              const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+              return {
+                thumbnailUrl: `data:${mime};base64,${base64}`,
+                extractedText: `[만화책 코믹스 전권] ${title}\n총 ${nestedZipNames.length}권 수록 (1권: ${nestedZipNames[0]})\n첫 페이지 표지: ${nestedImageNames[0]}`,
+                pageCount: nestedImageNames.length * nestedZipNames.length,
+              };
+            }
+          }
+        } catch (nestedErr) {
+          console.warn('[RealDocExtractor] Failed to extract from nested volume zip:', nestedErr);
+        }
+      }
+    }
+
+    // 3. Fallback: stylized comic cover canvas
     const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
     const thumb = DocRendererService.generateDocumentFirstPageThumbnail(
       title,
