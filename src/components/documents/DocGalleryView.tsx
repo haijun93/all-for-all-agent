@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { DocumentItem, DocGroupBy } from '../../types/document';
 import { DocCard } from './DocCard';
 import { FileText, Calendar, CheckSquare, Layers, Folder, Hash } from 'lucide-react';
@@ -14,6 +14,16 @@ interface DocGalleryViewProps {
   onSelectGroup: (docIds: string[]) => void;
 }
 
+/**
+ * Maximum number of documents to render at once.
+ * Documents beyond this limit are loaded incrementally as the user scrolls near the bottom.
+ * This prevents React from mounting 800+ DocCard components simultaneously,
+ * which causes OOM in DEV mode (Performance.measure DataCloneError) and GC stalls in production.
+ */
+const INITIAL_RENDER_LIMIT = 60;
+const LOAD_MORE_INCREMENT = 40;
+const SCROLL_THRESHOLD_PX = 600;
+
 export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
   docs,
   selectedDocIds,
@@ -24,10 +34,41 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
   onOpenViewer,
   onSelectGroup,
 }) => {
+  const [renderLimit, setRenderLimit] = useState(INITIAL_RENDER_LIMIT);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Reset render limit when docs array identity or groupBy changes
+  useEffect(() => {
+    setRenderLimit(INITIAL_RENDER_LIMIT);
+  }, [docs, groupBy]);
+
+  // Infinite scroll: load more when user scrolls near bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX) {
+      setRenderLimit((prev) => {
+        if (prev >= docs.length) return prev;
+        return Math.min(prev + LOAD_MORE_INCREMENT, docs.length);
+      });
+    }
+  }, [docs.length]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  // Only slice docs up to renderLimit for DOM rendering
+  const visibleDocs = useMemo(() => docs.slice(0, renderLimit), [docs, renderLimit]);
+
   const groupedData = useMemo(() => {
     const groups: { [key: string]: DocumentItem[] } = {};
 
-    docs.forEach((doc) => {
+    visibleDocs.forEach((doc) => {
       let key = '기타 문서';
       if (groupBy === 'category') {
         key = doc.category || '일반 문서';
@@ -53,7 +94,7 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
       docs: items,
       key: title,
     }));
-  }, [docs, groupBy]);
+  }, [visibleDocs, groupBy]);
 
   if (docs.length === 0) {
     return (
@@ -82,6 +123,7 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
 
   return (
     <div
+      ref={scrollRef}
       className="gallery-content-scroll"
       style={{ ['--thumb-size' as string]: `${thumbSize}px` }}
     >
@@ -144,6 +186,20 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
           </section>
         );
       })}
+
+      {/* Load more indicator */}
+      {renderLimit < docs.length && (
+        <div
+          style={{
+            padding: '24px 0',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: '0.85rem',
+          }}
+        >
+          📄 {renderLimit.toLocaleString()} / {docs.length.toLocaleString()} 문서 표시 중 — 스크롤하여 더 불러오기
+        </div>
+      )}
     </div>
   );
 };
