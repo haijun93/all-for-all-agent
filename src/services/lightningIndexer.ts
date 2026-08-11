@@ -4,6 +4,8 @@ import { KeywordEngine } from './keywordEngine';
 import { FastDocIndex } from './fastDocIndex';
 import { DocStorageService } from './docStorage';
 import { BackgroundIndexer } from './backgroundIndexer';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 /**
  * ⚡ Lightning Indexer — Everything-style instant file scanning.
@@ -38,13 +40,18 @@ export class LightningIndexer {
   }
 
   /**
-   * Phase 1: Lightning Scan from Directory Handle
+   * Phase 1: Lightning Scan from Directory Handle or Path
    */
-  public static async lightningscan(dirHandle: any): Promise<void> {
+  public static async lightningscan(dirHandleOrPath: any): Promise<void> {
+    if (typeof dirHandleOrPath === 'string') {
+      return this.tauriLightningScan(dirHandleOrPath);
+    }
+    
+    const dirHandle = dirHandleOrPath;
     const scanId = BackgroundIndexer.nextScanId();
     BackgroundIndexer.setLastScan(dirHandle, null);
 
-    console.log(`[LightningIndexer] Starting Lightning Scan for '${dirHandle.name}' (Scan ID: ${scanId})`);
+    console.log(`[LightningIndexer] Starting Web Lightning Scan for '${dirHandle.name}' (Scan ID: ${scanId})`);
 
     BackgroundIndexer.updateStatus({
       isIndexing: true,
@@ -81,6 +88,7 @@ export class LightningIndexer {
     let totalCount = 0;
     let cacheHits = 0;
     let newLightning = 0;
+    let iterCount = 0;
     let unpersistedBuffer: DocumentItem[] = [];
 
     this.enrichmentQueue.clear();
@@ -127,7 +135,7 @@ export class LightningIndexer {
                   if (unpersistedBuffer.length >= 30) {
                     const chunk = [...unpersistedBuffer];
                     unpersistedBuffer = [];
-                    DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
+                    await DocStorageService.saveDocumentsBulk(chunk);
                   }
                 }
 
@@ -143,11 +151,6 @@ export class LightningIndexer {
                   elapsedMs: Math.round(elapsed),
                   statusMessage: `⚡ Everything 초고속: ${totalCount}개 발견 (캐시 ${cacheHits}, 신규 ${newLightning})`,
                 }, false);
-
-                // Tiny cooperative yield to keep UI responsive
-                if (totalCount % 20 === 0) {
-                  await new Promise((r) => setTimeout(r, 2));
-                }
               } catch (fileErr) {
                 console.warn('[LightningIndexer] Error reading file:', entry.name, fileErr);
               }
@@ -155,6 +158,11 @@ export class LightningIndexer {
           } else if (entry.kind === 'directory') {
             if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '__MACOSX') continue;
             await traverse(entry, `${path}/${entry.name}`);
+          }
+          
+          iterCount++;
+          if (iterCount % 50 === 0) {
+            await new Promise((r) => setTimeout(r, 2));
           }
         }
       };
@@ -176,12 +184,14 @@ export class LightningIndexer {
         elapsedMs: Math.round(totalElapsed),
         statusMessage: `⚡ Everything 스캔 완료! 총 ${totalCount}개 (캐시 ${cacheHits}, 신규 ${newLightning}) — ${(totalElapsed / 1000).toFixed(2)}초 (초당 ${finalSpeed.toLocaleString()}개)`,
         isIndexing: false,
+        isHUDOpen: true, // Keep HUD open to show completion
       }, true);
 
       console.log(`[LightningIndexer] ✅ Scan completed: ${totalCount} files in ${(totalElapsed / 1000).toFixed(2)}s`);
 
-      // Start FileSystemObserver for real-time monitoring
-      this.startFileSystemObserver(dirHandle);
+      // ⚠️ DISABLED: startFileSystemObserver(dirHandle) causes native browser freeze on Mac OS
+      // when watching massive 2TB directories recursively via FSEvents.
+      // this.startFileSystemObserver(dirHandle);
 
     } catch (err) {
       console.error('[LightningIndexer] Scan failed:', err);
@@ -189,6 +199,129 @@ export class LightningIndexer {
         statusMessage: 'Lightning 인덱싱 중 오류가 발생했습니다.',
         isIndexing: false,
       }, true);
+    }
+  }
+
+  private static async tauriLightningScan(path: string): Promise<void> {
+    const scanId = BackgroundIndexer.nextScanId();
+    BackgroundIndexer.setLastScan(null, null);
+
+    console.log(`[LightningIndexer] Starting Tauri Rust Scan for '${path}'`);
+
+    const folderName = path.split(/[\/\\]/).pop() || path;
+
+    BackgroundIndexer.updateStatus({
+      isIndexing: true,
+      currentFileName: '⚡ Rust 네이티브 초고속 스캔 시작...',
+      scannedCount: 0,
+      totalFound: 0,
+      progressPercent: 0,
+      docsPerSecond: 0,
+      elapsedMs: 0,
+      statusMessage: `⚡ '${folderName}' Rust 모드 — 초고속 색인 중...`,
+      isMinimized: false,
+      isHUDOpen: true,
+    }, true);
+
+    let indexCache: Map<string, { fileSize: number; dateModified: string }>;
+    try {
+      indexCache = await DocStorageService.buildIndexCache();
+    } catch {
+      indexCache = new Map();
+    }
+
+    let cachedDocs: DocumentItem[] = [];
+    try {
+      cachedDocs = await DocStorageService.getAllDocuments();
+    } catch {
+      cachedDocs = [];
+    }
+    const cachedDocMap = new Map<string, DocumentItem>();
+    for (const d of cachedDocs) cachedDocMap.set(d.id, d);
+
+    let cacheHits = 0;
+    let newLightning = 0;
+    let unpersistedBuffer: DocumentItem[] = [];
+    this.enrichmentQueue.clear();
+    this.enrichmentAbortId++;
+
+    const unsubBatch = await listen('scan-batch', async (event: any) => {
+      const files: any[] = event.payload;
+      let addedToBuffer = false;
+
+      for (const file of files) {
+        const docIdUnique = BackgroundIndexer.generateDocId(file.path, file.name);
+        const dateStr = new Date(file.modified).toISOString().split('T')[0];
+
+        const cached = indexCache.get(docIdUnique);
+        if (cached && cached.fileSize === file.size && cached.dateModified === dateStr) {
+          cacheHits++;
+          const cachedDoc = cachedDocMap.get(docIdUnique);
+          if (cachedDoc) {
+            FastDocIndex.addDocument(cachedDoc);
+            BackgroundIndexer.enqueueDocStream(cachedDoc);
+          }
+        } else {
+          newLightning++;
+          const folderStr = file.path.substring(0, file.path.length - file.name.length);
+          
+          const fakeFile = new File([], file.name, { type: '', lastModified: file.modified });
+          Object.defineProperty(fakeFile, 'size', { value: file.size });
+
+          const doc = this.createLightningDocItem(fakeFile, folderStr, docIdUnique, dateStr);
+          doc.filePath = file.path;
+          FastDocIndex.addDocument(doc);
+          BackgroundIndexer.enqueueDocStream(doc);
+          unpersistedBuffer.push(doc);
+          addedToBuffer = true;
+          
+          // Tauri environments will need a different enrichment system using Tauri APIs,
+          // but for now we skip queuing native files for Web API enrichment.
+        }
+      }
+
+      if (addedToBuffer && unpersistedBuffer.length >= 30) {
+        const chunk = [...unpersistedBuffer];
+        unpersistedBuffer = [];
+        await DocStorageService.saveDocumentsBulk(chunk);
+      }
+    });
+
+    const unsubProgress = await listen('scan-progress', (event: any) => {
+      const p = event.payload;
+      BackgroundIndexer.updateStatus({
+        scannedCount: p.total_count,
+        totalFound: p.total_count,
+        docsPerSecond: Math.round(p.speed),
+        elapsedMs: Math.round(p.elapsed_ms),
+        statusMessage: `⚡ Rust 초고속: ${p.total_count}개 발견 (캐시 ${cacheHits}, 신규 ${newLightning})`,
+      }, false);
+    });
+
+    try {
+      const totalCount: number = await invoke('scan_directory', { path });
+      
+      BackgroundIndexer.flushDocBatch();
+      if (unpersistedBuffer.length > 0) {
+        await DocStorageService.saveDocumentsBulk(unpersistedBuffer);
+      }
+
+      BackgroundIndexer.updateStatus({
+        progressPercent: 100,
+        statusMessage: `⚡ Rust 스캔 완료! 총 ${totalCount}개 (캐시 ${cacheHits}, 신규 ${newLightning})`,
+        isIndexing: false,
+        isHUDOpen: true,
+      }, true);
+      
+    } catch (e) {
+      console.error(e);
+      BackgroundIndexer.updateStatus({
+        statusMessage: 'Rust 스캔 중 오류가 발생했습니다.',
+        isIndexing: false,
+      }, true);
+    } finally {
+      unsubBatch();
+      unsubProgress();
     }
   }
 
@@ -273,7 +406,7 @@ export class LightningIndexer {
             if (unpersistedBuffer.length >= 30) {
               const chunk = [...unpersistedBuffer];
               unpersistedBuffer = [];
-              DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
+              await DocStorageService.saveDocumentsBulk(chunk);
             }
           }
 
@@ -288,10 +421,10 @@ export class LightningIndexer {
             elapsedMs: Math.round(elapsed),
             statusMessage: `⚡ Everything 초고속: ${totalCount}/${files.length}개 (캐시 ${cacheHits}, 신규 ${newLightning})`,
           }, false);
-
-          if (totalCount % 20 === 0) {
-            await new Promise((r) => setTimeout(r, 2));
-          }
+        }
+        
+        if (i % 50 === 0) {
+          await new Promise((r) => setTimeout(r, 2));
         }
       }
 
@@ -311,6 +444,7 @@ export class LightningIndexer {
         elapsedMs: Math.round(totalElapsed),
         statusMessage: `⚡ Everything 스캔 완료! 총 ${totalCount}개 — ${(totalElapsed / 1000).toFixed(2)}초 (초당 ${finalSpeed.toLocaleString()}개)`,
         isIndexing: false,
+        isHUDOpen: true, // Keep HUD open to show completion
       }, true);
 
     } catch (err) {

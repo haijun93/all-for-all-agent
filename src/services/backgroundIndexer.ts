@@ -3,6 +3,8 @@ import { KeywordEngine } from './keywordEngine';
 import { FastDocIndex } from './fastDocIndex';
 import { DocStorageService } from './docStorage';
 import { RealDocExtractor } from './realDocExtractor';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export interface IndexingStatus {
   isIndexing: boolean;
@@ -256,6 +258,153 @@ export class BackgroundIndexer {
       author: '로컬 사용자',
       company: '내 컴퓨터',
     };
+  }
+
+  /**
+   * Starts non-blocking background 1st page deep scanning in Tauri native environment.
+   */
+  public static async startDeepScanFromPath(folderPath: string): Promise<void> {
+    const scanId = ++this.currentScanId;
+    this.lastDirHandle = null;
+    this.lastFileList = null;
+
+    const folderName = folderPath.split(/[\/\\]/).pop() || folderPath;
+
+    this.status = {
+      isIndexing: true,
+      currentFileName: '📦 캐시 및 파일 목록 확인 중...',
+      scannedCount: 0,
+      totalFound: 0,
+      progressPercent: 0,
+      docsPerSecond: 0,
+      elapsedMs: 0,
+      statusMessage: `'${folderName}' 정밀 1페이지 색인 준비 중...`,
+      isMinimized: false,
+      isHUDOpen: true,
+    };
+    this.notifyStatus(true);
+
+    let indexCache: Map<string, { fileSize: number; dateModified: string }>;
+    try {
+      indexCache = await DocStorageService.buildIndexCache();
+    } catch {
+      indexCache = new Map();
+    }
+
+    let cachedDocs: DocumentItem[] = [];
+    try {
+      cachedDocs = await DocStorageService.getAllDocuments();
+    } catch {
+      cachedDocs = [];
+    }
+    const cachedDocMap = new Map<string, DocumentItem>();
+    for (const d of cachedDocs) cachedDocMap.set(d.id, d);
+
+    // 1. Collect all files via Rust scanner
+    const allFiles: Array<{ path: string; name: string; size: number; modified: number }> = [];
+
+    const unsubBatch = await listen('scan-batch', (event: any) => {
+      const batch = event.payload as Array<{ path: string; name: string; size: number; modified: number }>;
+      allFiles.push(...batch);
+    });
+
+    try {
+      await invoke('scan_directory', { path: folderPath });
+    } catch (err) {
+      console.warn('[BackgroundIndexer] scan_directory error:', err);
+    } finally {
+      unsubBatch();
+    }
+
+    if (this.currentScanId !== scanId) return;
+
+    const totalFiles = allFiles.length;
+    this.status.totalFound = totalFiles;
+    this.notifyStatus(true);
+
+    const startTime = performance.now();
+    let processedCount = 0;
+    let skippedCount = 0;
+    let newCount = 0;
+    let unpersistedBuffer: DocumentItem[] = [];
+
+    for (const fileItem of allFiles) {
+      if (this.currentScanId !== scanId) return;
+
+      processedCount++;
+      const docId = this.generateDocId(fileItem.path, fileItem.name);
+      const dateStr = new Date(fileItem.modified).toISOString().split('T')[0];
+
+      // Incremental cache check
+      const cached = indexCache.get(docId);
+      if (cached && cached.fileSize === fileItem.size && cached.dateModified === dateStr) {
+        skippedCount++;
+        const cachedDoc = cachedDocMap.get(docId);
+        if (cachedDoc) {
+          FastDocIndex.addDocument(cachedDoc);
+          this.enqueueDocStream(cachedDoc);
+        }
+      } else {
+        // Full extraction with binary read from Rust
+        try {
+          const rawBytes: number[] = await invoke('read_file_binary', { path: fileItem.path });
+          const blob = new Blob([new Uint8Array(rawBytes)]);
+          const fileObj = new File([blob], fileItem.name, { lastModified: fileItem.modified });
+          
+          const folderStr = fileItem.path.substring(0, fileItem.path.length - fileItem.name.length);
+          const doc = await this.createRealDocItem(fileObj, folderStr);
+          doc.id = docId;
+          doc.filePath = fileItem.path;
+
+          newCount++;
+          unpersistedBuffer.push(doc);
+          FastDocIndex.addDocument(doc);
+          this.enqueueDocStream(doc);
+
+          if (unpersistedBuffer.length >= 10) {
+            const chunk = [...unpersistedBuffer];
+            unpersistedBuffer = [];
+            await DocStorageService.saveDocumentsBulk(chunk);
+          }
+        } catch (readErr) {
+          console.warn('[BackgroundIndexer] Extraction failed for:', fileItem.name, readErr);
+        }
+      }
+
+      const elapsed = Math.max(1, performance.now() - startTime);
+      const speed = Math.round(processedCount / (elapsed / 1000));
+      const percent = totalFiles > 0 ? Math.round((processedCount / totalFiles) * 100) : 0;
+
+      this.updateStatus({
+        currentFileName: `📄 [${processedCount}/${totalFiles}] ${fileItem.name}`,
+        scannedCount: processedCount,
+        progressPercent: percent,
+        docsPerSecond: speed,
+        elapsedMs: Math.round(elapsed),
+        statusMessage: `📄 1페이지 정밀 색인 중: ${processedCount}/${totalFiles} (신규 ${newCount}, 캐시 ${skippedCount})`,
+      }, false);
+
+      // Yield UI thread between extractions
+      await new Promise((r) => setTimeout(r, 4));
+    }
+
+    this.flushDocBatch();
+    if (unpersistedBuffer.length > 0) {
+      await DocStorageService.saveDocumentsBulk(unpersistedBuffer);
+      unpersistedBuffer = [];
+    }
+
+    const totalElapsed = Math.max(1, performance.now() - startTime);
+    const finalSpeed = Math.round(processedCount / (totalElapsed / 1000));
+
+    this.updateStatus({
+      progressPercent: 100,
+      docsPerSecond: finalSpeed,
+      elapsedMs: Math.round(totalElapsed),
+      statusMessage: `✅ 전체 1페이지 정밀 색인 완료! 총 ${processedCount}개 (신규 ${newCount}, 캐시 ${skippedCount})`,
+      isIndexing: false,
+      isHUDOpen: true,
+    }, true);
   }
 
   /**

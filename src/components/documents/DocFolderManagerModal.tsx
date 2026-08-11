@@ -11,6 +11,8 @@ import {
   BookOpen,
   FileCheck2
 } from 'lucide-react';
+import { isTauri } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 
 interface DocFolderManagerModalProps {
   isOpen: boolean;
@@ -30,6 +32,26 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
 
   const handleStartScan = async (mode: 'lightning' | 'deep') => {
     try {
+      if (isTauri()) {
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: mode === 'lightning' 
+            ? '스캔할 폴더 선택 (⚡ 초고속 Everything 모드)' 
+            : '스캔할 폴더 선택 (📄 전체 1페이지 정밀 스캔 모드)',
+        });
+        if (selected && typeof selected === 'string') {
+          onClose();
+          if (mode === 'lightning') {
+            await LightningIndexer.lightningscan(selected);
+          } else {
+            await BackgroundIndexer.startDeepScanFromPath(selected);
+          }
+          onScanComplete();
+        }
+        return;
+      }
+
       if ('showDirectoryPicker' in window) {
         const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' });
         onClose();
@@ -45,9 +67,13 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        console.warn(err);
-        setScanMode(mode);
-        fallbackInputRef.current?.click();
+        console.warn('Folder selection error:', err);
+        if (!isTauri()) {
+          setScanMode(mode);
+          fallbackInputRef.current?.click();
+        } else {
+          alert('폴더 선택 중 오류가 발생했습니다: ' + (err?.message || err));
+        }
       }
     }
   };

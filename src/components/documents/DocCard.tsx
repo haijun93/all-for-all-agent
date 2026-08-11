@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import type { DocumentItem, DocFormat } from '../../types/document';
-import { Star, Eye, Zap } from 'lucide-react';
+import { Star, Eye, Zap, ExternalLink } from 'lucide-react';
 import { LightningIndexer } from '../../services/lightningIndexer';
+import { openWithDefaultApp } from '../../utils/fileOpener';
 
 interface DocCardProps {
   doc: DocumentItem;
@@ -73,8 +74,13 @@ export const DocCard = React.memo<DocCardProps>(({
       ref={cardRef}
       className={`photo-card ${isSelected ? 'selected' : ''}`}
       onClick={() => onOpenViewer(doc)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        openWithDefaultApp(doc);
+      }}
       onMouseEnter={handleMouseEnter}
-      style={{ aspectRatio: '3 / 4.2', display: 'flex', flexDirection: 'column' }}
+      style={{ aspectRatio: '3 / 4.2', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
+      title={`${doc.title}\n더블클릭: 연결 앱(Apple Books 등)으로 직접 열기\n클릭: 상세 미리보기`}
     >
       {/* 1st Page Visual Thumbnail Canvas Preview */}
       <div className="photo-card-img-wrapper" style={{ flex: 1, position: 'relative', background: '#0e121a' }}>
@@ -143,21 +149,32 @@ export const DocCard = React.memo<DocCardProps>(({
         </div>
 
         {/* Hover Quick Actions */}
-        <div className="photo-card-actions">
+        <div className="photo-card-actions" style={{ gap: 4 }}>
           <button
             className="btn btn-ghost btn-sm"
-            style={{ color: '#ffffff', background: 'rgba(0,0,0,0.5)', padding: 6 }}
+            style={{ color: '#ffffff', background: 'rgba(0,0,0,0.65)', padding: 6 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              openWithDefaultApp(doc);
+            }}
+            title="연결 앱으로 열기 (Apple Books / 기본 뷰어)"
+          >
+            <ExternalLink size={15} color="#34a853" />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: '#ffffff', background: 'rgba(0,0,0,0.65)', padding: 6 }}
             onClick={(e) => {
               e.stopPropagation();
               onOpenViewer(doc);
             }}
-            title="문서 내용 열람"
+            title="문서 내용 열람 (미리보기)"
           >
             <Eye size={15} />
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            style={{ color: doc.isStarred ? '#fbbc05' : '#ffffff', background: 'rgba(0,0,0,0.5)', padding: 6 }}
+            style={{ color: doc.isStarred ? '#fbbc05' : '#ffffff', background: 'rgba(0,0,0,0.65)', padding: 6 }}
             onClick={(e) => {
               e.stopPropagation();
               onToggleStar(doc.id, e);

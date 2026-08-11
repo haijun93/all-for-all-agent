@@ -9,8 +9,10 @@ import {
   FileText,
   ZoomIn,
   ZoomOut,
-  Hash
+  Hash,
+  ExternalLink
 } from 'lucide-react';
+import { openWithDefaultApp } from '../../utils/fileOpener';
 
 interface DocLightboxModalProps {
   doc: DocumentItem | null;
@@ -88,6 +90,21 @@ export const DocLightboxModal: React.FC<DocLightboxModalProps> = ({
               <span>추출된 본문 텍스트</span>
             </button>
           </div>
+
+          <button
+            className="btn btn-primary btn-sm"
+            style={{
+              background: 'linear-gradient(135deg, #107c41, #34a853)',
+              boxShadow: '0 2px 10px rgba(52, 168, 83, 0.4)',
+              fontWeight: 700,
+              gap: 6
+            }}
+            onClick={() => openWithDefaultApp(doc)}
+            title={`운영체제 기본 연결 프로그램으로 열기 (${doc.format.toUpperCase()})`}
+          >
+            <ExternalLink size={14} />
+            <span>연결 앱으로 열기</span>
+          </button>
 
           <button
             className={`btn btn-sm ${doc.isStarred ? 'btn-lucky' : 'btn-secondary'}`}

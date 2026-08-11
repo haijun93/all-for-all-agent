@@ -4,6 +4,7 @@ export interface DocumentItem {
   id: string;
   title: string;
   fileName: string;
+  filePath?: string;
   fileSize: number; // in bytes
   format: DocFormat;
   dateCreated: string; // YYYY-MM-DD

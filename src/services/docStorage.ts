@@ -3,8 +3,8 @@ import { SAMPLE_DOCUMENTS } from './sampleDocs';
 import { KeywordEngine } from './keywordEngine';
 import { RealDocExtractor } from './realDocExtractor';
 
-const DB_NAME = 'PicasaWebDB';
-const DB_VERSION = 2; // Incremented for documents store
+const DB_NAME = 'PicasaDocDB';
+const DB_VERSION = 1;
 
 export class DocStorageService {
   private static db: IDBDatabase | null = null;
@@ -20,15 +20,6 @@ export class DocStorageService {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
 
-        if (!db.objectStoreNames.contains('photos')) {
-          db.createObjectStore('photos', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('albums')) {
-          db.createObjectStore('albums', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('people')) {
-          db.createObjectStore('people', { keyPath: 'id' });
-        }
         if (!db.objectStoreNames.contains('documents')) {
           db.createObjectStore('documents', { keyPath: 'id' });
         }
