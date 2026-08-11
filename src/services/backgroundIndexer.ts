@@ -33,6 +33,8 @@ export class BackgroundIndexer {
   };
 
   private static currentScanId = 0;
+  private static lastDirHandle: any = null;
+  private static lastFileList: FileList | null = null;
   private static statusListeners = new Set<StatusListener>();
   private static docStreamListeners = new Set<DocStreamListener>();
 
@@ -51,6 +53,18 @@ export class BackgroundIndexer {
     this.status.currentFileName = '🛑 인덱싱 중지됨';
     this.status.statusMessage = '사용자에 의해 인덱싱이 즉시 중지되었습니다.';
     this.notifyStatus();
+  }
+
+  public static async resumeOrRestartScan(): Promise<void> {
+    if (this.lastDirHandle) {
+      await this.startIndexingFromHandle(this.lastDirHandle);
+    } else if (this.lastFileList && this.lastFileList.length > 0) {
+      await this.startIndexingFromFiles(this.lastFileList);
+    }
+  }
+
+  public static canRestartScan(): boolean {
+    return !!this.lastDirHandle || (!!this.lastFileList && this.lastFileList.length > 0);
   }
 
   public static subscribeStatus(listener: StatusListener): () => void {
@@ -147,6 +161,9 @@ export class BackgroundIndexer {
    * Starts non-blocking background indexing stream from directory handle
    */
   public static async startIndexingFromHandle(dirHandle: any): Promise<void> {
+    this.lastDirHandle = dirHandle;
+    this.lastFileList = null;
+
     // Increment scan ID so any previous ongoing scan terminates gracefully
     const scanId = ++this.currentScanId;
 
@@ -249,6 +266,9 @@ export class BackgroundIndexer {
    * Starts non-blocking background indexing stream from FileList
    */
   public static async startIndexingFromFiles(files: FileList): Promise<void> {
+    this.lastFileList = files;
+    this.lastDirHandle = null;
+
     const scanId = ++this.currentScanId;
 
     this.status = {

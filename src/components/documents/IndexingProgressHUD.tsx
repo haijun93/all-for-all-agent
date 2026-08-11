@@ -10,7 +10,8 @@ import {
   X,
   FileText,
   StopCircle,
-  EyeOff
+  EyeOff,
+  RotateCcw
 } from 'lucide-react';
 
 export const IndexingProgressHUD: React.FC = () => {
@@ -53,6 +54,13 @@ export const IndexingProgressHUD: React.FC = () => {
       currentFileName: '🛑 인덱싱 중지됨',
       statusMessage: '사용자에 의해 스캔이 중지되었습니다.',
     }));
+  };
+
+  // Handle Restart / Resume Scan
+  const handleRestartScan = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await BackgroundIndexer.resumeOrRestartScan();
   };
 
   // Handle Minimize (Hide to Background)
@@ -371,8 +379,8 @@ export const IndexingProgressHUD: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         <span>소요 시간: {(status.elapsedMs / 1000).toFixed(2)}초</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Stop Scan Button */}
-          {status.isIndexing && (
+          {/* Stop / Restart Scan Button */}
+          {status.isIndexing ? (
             <button
               type="button"
               onClick={handleStopScan}
@@ -395,6 +403,30 @@ export const IndexingProgressHUD: React.FC = () => {
             >
               <StopCircle size={13} />
               <span>스캔 중지</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRestartScan}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 12px',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                color: '#ffffff',
+                background: '#16a34a',
+                border: '1px solid #22c55e',
+                borderRadius: 6,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: '0 2px 8px rgba(22, 163, 74, 0.4)',
+              }}
+              title="스캔을 다시 시작하거나 최신 변경사항을 재색인합니다"
+            >
+              <RotateCcw size={13} />
+              <span>스캔 재시작</span>
             </button>
           )}
 
