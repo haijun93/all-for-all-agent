@@ -103,6 +103,39 @@ export class DocStorageService {
     });
   }
 
+  /**
+   * Builds a lightweight fingerprint cache for incremental indexing.
+   * Returns a Map<docId, { fileSize, dateModified }> that the BackgroundIndexer
+   * can use to skip already-indexed files (O(1) cache-hit per file).
+   * 
+   * Inspired by Everything's approach: only re-process files whose
+   * size or timestamp have changed since the last index.
+   */
+  public static async buildIndexCache(): Promise<Map<string, { fileSize: number; dateModified: string }>> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const cache = new Map<string, { fileSize: number; dateModified: string }>();
+      const tx = db.transaction('documents', 'readonly');
+      const store = tx.objectStore('documents');
+      const req = store.openCursor();
+
+      req.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          const doc = cursor.value as DocumentItem;
+          cache.set(doc.id, {
+            fileSize: doc.fileSize,
+            dateModified: doc.dateModified,
+          });
+          cursor.continue();
+        } else {
+          resolve(cache);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   public static async getDocument(id: string): Promise<DocumentItem | undefined> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
