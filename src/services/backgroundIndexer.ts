@@ -50,6 +50,24 @@ export class BackgroundIndexer {
     return { ...this.status };
   }
 
+  public static nextScanId(): number {
+    return ++this.currentScanId;
+  }
+
+  public static getCurrentScanId(): number {
+    return this.currentScanId;
+  }
+
+  public static setLastScan(handle: any, fileList: FileList | null): void {
+    this.lastDirHandle = handle;
+    this.lastFileList = fileList;
+  }
+
+  public static updateStatus(partial: Partial<IndexingStatus>, force = false): void {
+    this.status = { ...this.status, ...partial };
+    this.notifyStatus(force);
+  }
+
   public static showHUD(): void {
     this.status.isHUDOpen = true;
     this.status.isMinimized = false;
