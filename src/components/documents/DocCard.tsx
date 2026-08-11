@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { DocumentItem, DocFormat } from '../../types/document';
-import { Star, Eye } from 'lucide-react';
+import { Star, Eye, Zap } from 'lucide-react';
+import { LightningIndexer } from '../../services/lightningIndexer';
 
 interface DocCardProps {
   doc: DocumentItem;
@@ -33,11 +34,46 @@ export const DocCard = React.memo<DocCardProps>(({
   onOpenViewer,
 }) => {
   const formatBadge = FORMAT_CONFIG[doc.format] || FORMAT_CONFIG.txt;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const isVector = doc.thumbnailUrl?.startsWith('data:image/svg+xml');
+  const hasPendingEnrich = LightningIndexer.hasPendingEnrichment(doc.id);
+
+  // Lazy Thumbnail Enrichment via IntersectionObserver:
+  // When card enters viewport, enrich thumbnail in background
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || !hasPendingEnrich) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          // Debounce enrichment slightly to allow smooth scrolling
+          const timer = setTimeout(() => {
+            LightningIndexer.enrichDocument(doc.id);
+          }, 300);
+          return () => clearTimeout(timer);
+        }
+      },
+      { rootMargin: '200px' } // Pre-load 200px before scrolling into view
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [doc.id, hasPendingEnrich]);
+
+  // Enrich on hover immediately
+  const handleMouseEnter = () => {
+    if (hasPendingEnrich) {
+      LightningIndexer.enrichDocument(doc.id);
+    }
+  };
 
   return (
     <div
+      ref={cardRef}
       className={`photo-card ${isSelected ? 'selected' : ''}`}
       onClick={() => onOpenViewer(doc)}
+      onMouseEnter={handleMouseEnter}
       style={{ aspectRatio: '3 / 4.2', display: 'flex', flexDirection: 'column' }}
     >
       {/* 1st Page Visual Thumbnail Canvas Preview */}
@@ -46,7 +82,7 @@ export const DocCard = React.memo<DocCardProps>(({
           src={doc.thumbnailUrl}
           alt={doc.title}
           className="photo-card-img"
-          style={{ objectFit: 'contain', padding: 6 }}
+          style={{ objectFit: 'contain', padding: isVector ? 0 : 6 }}
           loading="lazy"
         />
 
@@ -56,18 +92,44 @@ export const DocCard = React.memo<DocCardProps>(({
             position: 'absolute',
             top: 8,
             left: 8,
-            background: formatBadge.bg,
-            color: formatBadge.color,
-            fontSize: '0.65rem',
-            fontWeight: 800,
-            padding: '2px 6px',
-            borderRadius: 4,
-            letterSpacing: 0.5,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
             zIndex: 2,
           }}
         >
-          {formatBadge.label}
+          <div
+            style={{
+              background: formatBadge.bg,
+              color: formatBadge.color,
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              padding: '2px 6px',
+              borderRadius: 4,
+              letterSpacing: 0.5,
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+            }}
+          >
+            {formatBadge.label}
+          </div>
+
+          {/* Lightning indicator */}
+          {isVector && (
+            <div
+              title="Everything 초고속 모드 (스크롤/호버 시 정밀 썸네일 자동 생성)"
+              style={{
+                background: 'rgba(251, 188, 5, 0.9)',
+                color: '#000000',
+                padding: '2px 4px',
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+              }}
+            >
+              <Zap size={10} fill="#000000" />
+            </div>
+          )}
         </div>
 
         {/* Selection Checkbox Top Right Overlay */}
@@ -150,3 +212,4 @@ export const DocCard = React.memo<DocCardProps>(({
 });
 
 DocCard.displayName = 'DocCard';
+

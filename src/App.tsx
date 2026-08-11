@@ -19,6 +19,7 @@ import { PeopleManager } from './components/people/PeopleManager';
 import { FastDocIndex } from './services/fastDocIndex';
 import { ProgressiveDocWorker } from './services/progressiveDocWorker';
 import { BackgroundIndexer } from './services/backgroundIndexer';
+import { LightningIndexer } from './services/lightningIndexer';
 import { ElectronWatcherService } from './services/electronWatcher';
 
 // Document Studio Components
@@ -136,10 +137,18 @@ export const App: React.FC = () => {
       }
     });
 
+    // 4. Subscribe to LightningIndexer lazy enrichment updates
+    const unsubLightning = LightningIndexer.subscribeEnrichment((enrichedDoc) => {
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === enrichedDoc.id ? enrichedDoc : d))
+      );
+    });
+
     return () => {
       unsubStream();
       unsubWorker();
       unsubWatcher();
+      unsubLightning();
     };
   }, [loadPhotoData, loadDocData]);
 

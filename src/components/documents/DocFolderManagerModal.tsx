@@ -1,14 +1,15 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { BackgroundIndexer } from '../../services/backgroundIndexer';
+import { LightningIndexer } from '../../services/lightningIndexer';
 import { DocStorageService } from '../../services/docStorage';
-import { fileExplorerName, isWindows } from '../../utils/platform';
+import { isWindows } from '../../utils/platform';
 import {
   FolderSearch,
   X,
   Trash2,
-  FolderPlus,
   Zap,
-  BookOpen
+  BookOpen,
+  FileCheck2
 } from 'lucide-react';
 
 interface DocFolderManagerModalProps {
@@ -23,23 +24,29 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
   onScanComplete,
 }) => {
   const fallbackInputRef = useRef<HTMLInputElement>(null);
+  const [scanMode, setScanMode] = useState<'lightning' | 'deep'>('lightning');
 
   if (!isOpen) return null;
 
-  const handleStartScan = async () => {
+  const handleStartScan = async (mode: 'lightning' | 'deep') => {
     try {
       if ('showDirectoryPicker' in window) {
         const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' });
         onClose();
-        // Start non-blocking background indexer
-        await BackgroundIndexer.startIndexingFromHandle(dirHandle);
+        if (mode === 'lightning') {
+          await LightningIndexer.lightningscan(dirHandle);
+        } else {
+          await BackgroundIndexer.startIndexingFromHandle(dirHandle);
+        }
         onScanComplete();
       } else {
+        setScanMode(mode);
         fallbackInputRef.current?.click();
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.warn(err);
+        setScanMode(mode);
         fallbackInputRef.current?.click();
       }
     }
@@ -47,7 +54,11 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
 
   const handleFallbackFiles = async (files: FileList) => {
     onClose();
-    await BackgroundIndexer.startIndexingFromFiles(files);
+    if (scanMode === 'lightning') {
+      await LightningIndexer.startScanFromFiles(files);
+    } else {
+      await BackgroundIndexer.startIndexingFromFiles(files);
+    }
     onScanComplete();
   };
 
@@ -158,6 +169,7 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
               }}
             />
 
+            {/* 1. Lightning Scan (Primary Recommendation) */}
             <button
               className="btn btn-primary"
               style={{
@@ -165,17 +177,45 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
                 fontSize: '0.95rem',
                 gap: 10,
                 background: 'linear-gradient(135deg, #107c41, #34a853)',
+                boxShadow: '0 4px 14px rgba(52, 168, 83, 0.35)',
               }}
-              onClick={handleStartScan}
+              onClick={() => handleStartScan('lightning')}
             >
-              <FolderPlus size={20} />
-              <span>⚡️ {fileExplorerName}에서 스캔할 문서/전자책 폴더 지정하기 (백그라운드 실행)</span>
+              <Zap size={20} color="#fbbc05" />
+              <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 700 }}>⚡ Everything 초고속 스캔 (권장, ~2초 완료)</span>
+                <span style={{ fontSize: '0.72rem', opacity: 0.9, fontWeight: 400 }}>
+                  파일명/메타데이터 즉시 색인 + 뷰포트 내 문서 썸네일 점진적 자동 로딩
+                </span>
+              </div>
+            </button>
+
+            {/* 2. Deep Full 1st Page Canvas Scan */}
+            <button
+              className="btn btn-secondary"
+              style={{
+                padding: '12px 18px',
+                fontSize: '0.88rem',
+                gap: 10,
+                background: 'rgba(66, 133, 244, 0.15)',
+                border: '1px solid rgba(66, 133, 244, 0.4)',
+                color: '#ffffff',
+              }}
+              onClick={() => handleStartScan('deep')}
+            >
+              <FileCheck2 size={18} color="#4285f4" />
+              <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 600 }}>📄 전체 1페이지 정밀 스캔</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                  모든 문서의 1페이지 캔버스 및 텍스트를 즉시 완전 추출
+                </span>
+              </div>
             </button>
 
             <button
-              className="btn btn-secondary btn-sm"
+              className="btn btn-ghost btn-sm"
               onClick={handleClearSampleDocs}
-              style={{ color: 'var(--text-secondary)', gap: 6 }}
+              style={{ color: 'var(--text-secondary)', gap: 6, marginTop: 4 }}
             >
               <Trash2 size={13} color="#ea4335" />
               <span>샘플 문서 비우기 (내 컴퓨터 문서만 보기)</span>
