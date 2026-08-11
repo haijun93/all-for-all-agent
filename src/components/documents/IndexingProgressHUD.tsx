@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BackgroundIndexer, type IndexingStatus } from '../../services/backgroundIndexer';
 import {
   Zap,
@@ -15,55 +15,102 @@ import {
 
 export const IndexingProgressHUD: React.FC = () => {
   const [status, setStatus] = useState<IndexingStatus>(BackgroundIndexer.getStatus());
-  const [isVisible, setIsVisible] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const wasIndexingRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = BackgroundIndexer.subscribeStatus((newStatus) => {
       setStatus(newStatus);
-      if (newStatus.isIndexing) {
-        setIsVisible(true);
+
+      // Auto-show HUD when a NEW scan starts
+      if (newStatus.isIndexing && !wasIndexingRef.current) {
+        setIsDismissed(false);
+        setIsMinimized(false);
       }
+      wasIndexingRef.current = newStatus.isIndexing;
     });
+
     return () => unsubscribe();
   }, []);
 
-  if (!isVisible && !status.isIndexing && status.scannedCount === 0) return null;
+  // If manually closed by user, don't show until next scan starts
+  if (isDismissed) return null;
+  // If not indexing and nothing scanned, don't render
+  if (!status.isIndexing && status.scannedCount === 0) return null;
 
-  const isComplete = !status.isIndexing && status.scannedCount > 0;
+  const isComplete = !status.isIndexing && status.scannedCount > 0 && !status.currentFileName.includes('중지');
   const isCancelled = !status.isIndexing && status.currentFileName.includes('중지');
 
-  // 1. Minimized Floating Status Pill (Bottom Right)
-  if (status.isMinimized) {
+  // Handle Stop Scan
+  const handleStopScan = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    BackgroundIndexer.cancelCurrentScan();
+    setStatus((prev) => ({
+      ...prev,
+      isIndexing: false,
+      currentFileName: '🛑 인덱싱 중지됨',
+      statusMessage: '사용자에 의해 스캔이 중지되었습니다.',
+    }));
+  };
+
+  // Handle Minimize (Hide to Background)
+  const handleMinimize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsMinimized(true);
+    BackgroundIndexer.setMinimized(true);
+  };
+
+  // Handle Restore (Expand HUD)
+  const handleRestore = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsMinimized(false);
+    BackgroundIndexer.setMinimized(false);
+  };
+
+  // Handle Close (Dismiss)
+  const handleDismiss = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDismissed(true);
+  };
+
+  // 1. Minimized Floating Status Pill Mode (Bottom Right)
+  if (isMinimized || status.isMinimized) {
     return (
       <div
-        onClick={() => BackgroundIndexer.setMinimized(false)}
+        onClick={handleRestore}
         style={{
           position: 'fixed',
-          bottom: 70,
+          bottom: 72,
           right: 24,
-          background: 'rgba(18, 24, 38, 0.94)',
+          background: 'rgba(15, 23, 42, 0.95)',
           backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(66, 133, 244, 0.45)',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.06)',
-          borderRadius: 24,
+          border: '1px solid rgba(59, 130, 246, 0.5)',
+          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.08)',
+          borderRadius: 30,
           padding: '8px 16px',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
           cursor: 'pointer',
-          zIndex: 9999,
-          transition: 'all 0.2s ease',
+          zIndex: 100000,
+          pointerEvents: 'auto',
           userSelect: 'none',
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
         title="클릭하여 인덱싱 대시보드 확장"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {status.isIndexing ? (
-            <Cpu size={16} color="#4285f4" className="animate-spin" />
+            <Cpu size={16} color="#3b82f6" className="animate-spin" />
           ) : isCancelled ? (
             <StopCircle size={16} color="#ef4444" />
           ) : (
-            <CheckCircle2 size={16} color="#34a853" />
+            <CheckCircle2 size={16} color="#22c55e" />
           )}
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ffffff' }}>
             {status.isIndexing
@@ -77,8 +124,8 @@ export const IndexingProgressHUD: React.FC = () => {
         <span
           style={{
             fontSize: '0.72rem',
-            background: 'rgba(66, 133, 244, 0.2)',
-            color: '#60a5fa',
+            background: 'rgba(59, 130, 246, 0.2)',
+            color: '#93c5fd',
             padding: '2px 8px',
             borderRadius: 12,
             fontWeight: 700,
@@ -88,42 +135,44 @@ export const IndexingProgressHUD: React.FC = () => {
           {status.scannedCount}개 ({status.docsPerSecond.toLocaleString()} docs/s)
         </span>
 
+        {/* Expand Button */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            BackgroundIndexer.setMinimized(false);
-          }}
+          type="button"
+          onClick={handleRestore}
           style={{
-            background: 'none',
+            background: 'rgba(255, 255, 255, 0.1)',
             border: 'none',
+            borderRadius: '50%',
             cursor: 'pointer',
-            padding: 2,
+            padding: 4,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             color: '#94a3b8',
           }}
           title="대시보드 펼치기"
         >
-          <Maximize2 size={14} />
+          <Maximize2 size={13} />
         </button>
 
+        {/* Close Button */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsVisible(false);
-          }}
+          type="button"
+          onClick={handleDismiss}
           style={{
-            background: 'none',
+            background: 'rgba(255, 255, 255, 0.1)',
             border: 'none',
+            borderRadius: '50%',
             cursor: 'pointer',
-            padding: 2,
+            padding: 4,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             color: '#94a3b8',
           }}
           title="완전 닫기"
         >
-          <X size={14} />
+          <X size={13} />
         </button>
       </div>
     );
@@ -134,19 +183,20 @@ export const IndexingProgressHUD: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        bottom: 70,
+        bottom: 72,
         right: 24,
         width: 370,
-        background: 'rgba(18, 24, 38, 0.96)',
+        background: 'rgba(15, 23, 42, 0.96)',
         backdropFilter: 'blur(24px)',
-        border: '1px solid rgba(66, 133, 244, 0.35)',
-        boxShadow: '0 24px 54px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255,255,255,0.06)',
-        borderRadius: 14,
+        border: '1px solid rgba(59, 130, 246, 0.4)',
+        boxShadow: '0 24px 54px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255,255,255,0.08)',
+        borderRadius: 16,
         padding: 18,
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
-        zIndex: 9999,
+        zIndex: 100000,
+        pointerEvents: 'auto',
         animation: 'fadeIn 0.2s ease',
       }}
     >
@@ -155,25 +205,25 @@ export const IndexingProgressHUD: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div
             style={{
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               borderRadius: 8,
               background: status.isIndexing
-                ? 'rgba(66, 133, 244, 0.2)'
+                ? 'rgba(59, 130, 246, 0.2)'
                 : isCancelled
                 ? 'rgba(239, 68, 68, 0.2)'
-                : 'rgba(52, 168, 83, 0.2)',
+                : 'rgba(34, 197, 94, 0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
             {status.isIndexing ? (
-              <Zap size={16} color="#fbbc05" />
+              <Zap size={16} color="#eab308" />
             ) : isCancelled ? (
               <StopCircle size={16} color="#ef4444" />
             ) : (
-              <CheckCircle2 size={16} color="#34a853" />
+              <CheckCircle2 size={16} color="#22c55e" />
             )}
           </div>
           <div>
@@ -190,14 +240,16 @@ export const IndexingProgressHUD: React.FC = () => {
           </div>
         </div>
 
+        {/* Top Actions: Minimize & Close */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
-            onClick={() => BackgroundIndexer.setMinimized(true)}
+            type="button"
+            onClick={handleMinimize}
             style={{
               background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
               borderRadius: 6,
-              padding: '4px 6px',
+              padding: '5px 7px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -209,12 +261,13 @@ export const IndexingProgressHUD: React.FC = () => {
             <Minimize2 size={14} />
           </button>
           <button
-            onClick={() => setIsVisible(false)}
+            type="button"
+            onClick={handleDismiss}
             style={{
               background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
               borderRadius: 6,
-              padding: '4px 6px',
+              padding: '5px 7px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -245,12 +298,12 @@ export const IndexingProgressHUD: React.FC = () => {
             처리 속도 (Speedometer)
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <Gauge size={16} color="#34a853" />
+            <Gauge size={16} color="#22c55e" />
             <span
               style={{
                 fontSize: '1.1rem',
                 fontWeight: 800,
-                color: '#34a853',
+                color: '#22c55e',
                 fontFamily: 'var(--font-mono)',
               }}
             >
@@ -299,7 +352,7 @@ export const IndexingProgressHUD: React.FC = () => {
       </div>
 
       {/* Animated Gradient Progress Bar */}
-      <div style={{ width: '100%', height: 6, background: '#131822', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: 6, background: '#090d16', borderRadius: 4, overflow: 'hidden' }}>
         <div
           style={{
             width: isComplete ? '100%' : '100%',
@@ -307,8 +360,8 @@ export const IndexingProgressHUD: React.FC = () => {
             background: isCancelled
               ? '#ef4444'
               : isComplete
-              ? '#34a853'
-              : 'linear-gradient(90deg, #4285f4, #a855f7, #34a853)',
+              ? '#22c55e'
+              : 'linear-gradient(90deg, #3b82f6, #a855f7, #22c55e)',
             animation: status.isIndexing ? 'shimmer 1.5s infinite linear' : 'none',
           }}
         />
@@ -321,25 +374,24 @@ export const IndexingProgressHUD: React.FC = () => {
           {/* Stop Scan Button */}
           {status.isIndexing && (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                BackgroundIndexer.cancelCurrentScan();
-              }}
+              type="button"
+              onClick={handleStopScan}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
-                padding: '5px 10px',
-                fontSize: '0.74rem',
+                gap: 5,
+                padding: '6px 12px',
+                fontSize: '0.76rem',
                 fontWeight: 700,
                 color: '#ffffff',
-                background: 'rgba(239, 68, 68, 0.85)',
-                border: '1px solid rgba(239, 68, 68, 0.9)',
+                background: '#dc2626',
+                border: '1px solid #ef4444',
                 borderRadius: 6,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
+                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.4)',
               }}
-              title="현재 진행 중인 인덱싱을 즉시 중지합니다"
+              title="진행 중인 인덱싱을 즉시 중지합니다"
             >
               <StopCircle size={13} />
               <span>스캔 중지</span>
@@ -348,25 +400,24 @@ export const IndexingProgressHUD: React.FC = () => {
 
           {/* Hide to Background (Minimize) Button */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              BackgroundIndexer.setMinimized(true);
-            }}
+            type="button"
+            onClick={handleMinimize}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              padding: '5px 10px',
-              fontSize: '0.74rem',
+              gap: 5,
+              padding: '6px 12px',
+              fontSize: '0.76rem',
               fontWeight: 700,
               color: '#ffffff',
-              background: 'rgba(66, 133, 244, 0.85)',
-              border: '1px solid rgba(66, 133, 244, 0.9)',
+              background: '#2563eb',
+              border: '1px solid #3b82f6',
               borderRadius: 6,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)',
             }}
-            title="HUD를 접고 우측 하단 플로팅 뱃지로 최소화합니다"
+            title="HUD를 접고 우측 하단 플로팅 알약 뱃지로 최소화합니다"
           >
             <EyeOff size={13} />
             <span>백그라운드로 숨기기</span>
