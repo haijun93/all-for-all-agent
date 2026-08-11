@@ -48,7 +48,8 @@ export class BackgroundIndexer {
   public static cancelCurrentScan(): void {
     this.currentScanId++;
     this.status.isIndexing = false;
-    this.status.statusMessage = '인덱싱이 취소되었습니다.';
+    this.status.currentFileName = '🛑 인덱싱 중지됨';
+    this.status.statusMessage = '사용자에 의해 인덱싱이 즉시 중지되었습니다.';
     this.notifyStatus();
   }
 
