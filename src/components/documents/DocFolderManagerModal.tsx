@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { BackgroundIndexer } from '../../services/backgroundIndexer';
 import { DocStorageService } from '../../services/docStorage';
-import { fileExplorerName } from '../../utils/platform';
+import { fileExplorerName, isWindows } from '../../utils/platform';
 import {
   FolderSearch,
   X,
@@ -109,14 +109,17 @@ export const DocFolderManagerModal: React.FC<DocFolderManagerModalProps> = ({
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#ffffff' }}>
-                  Voidtools Everything 2단계 백그라운드 가속 엔진
+                  Voidtools Everything 2단계 가속 & 윈도우 실시간 모니터링
                 </h4>
+                <span style={{ fontSize: '0.68rem', background: '#107c41', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                  0.0% CPU 초저전력
+                </span>
                 <span style={{ fontSize: '0.68rem', background: '#9333ea', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
-                  EPUB + HWP + OFFICE
+                  EPUB + HWP + COMIC
                 </span>
               </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                스캔을 시작하면 창이 즉시 닫히며 <b>백그라운드에서 실시간 속도계(Speedometer)와 함께 문서들이 갤러리로 라이브 스트리밍</b>됩니다. 인덱싱 중에도 자유롭게 검색하고 문서를 열람하실 수 있습니다.
+                {isWindows ? '윈도우 시스템 트레이와 연동되어 파일이 추가·수정·삭제될 때 0.0% CPU로 실시간 자동 인덱싱됩니다.' : '스캔을 시작하면 창이 즉시 닫히며 백그라운드에서 실시간 속도계와 함께 문서들이 갤러리로 라이브 스트리밍됩니다.'}
               </p>
             </div>
           </div>

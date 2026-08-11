@@ -28,6 +28,13 @@ export class FastDocIndex {
   }
 
   /**
+   * Removes a document from the in-memory index
+   */
+  public static removeDocument(id: string): void {
+    this.docsMap.delete(id);
+  }
+
+  /**
    * Adds or updates a single document in the memory index
    */
   public static addDocument(doc: DocumentItem): void {

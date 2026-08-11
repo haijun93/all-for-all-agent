@@ -19,6 +19,7 @@ import { PeopleManager } from './components/people/PeopleManager';
 import { FastDocIndex } from './services/fastDocIndex';
 import { ProgressiveDocWorker } from './services/progressiveDocWorker';
 import { BackgroundIndexer } from './services/backgroundIndexer';
+import { ElectronWatcherService } from './services/electronWatcher';
 
 // Document Studio Components
 import { DocSidebar } from './components/documents/DocSidebar';
@@ -115,9 +116,27 @@ export const App: React.FC = () => {
       );
     });
 
+    // 3. Subscribe to Real-time Electron File Watcher (Everything style)
+    const unsubWatcher = ElectronWatcherService.subscribe((change, updatedDoc) => {
+      if (change.eventType === 'deleted') {
+        setDocuments((prev) => prev.filter((d) => d.fileName !== change.fileName));
+      } else if (updatedDoc) {
+        setDocuments((prev) => {
+          const idx = prev.findIndex((d) => d.id === updatedDoc.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = updatedDoc;
+            return next;
+          }
+          return [updatedDoc, ...prev];
+        });
+      }
+    });
+
     return () => {
       unsubStream();
       unsubWorker();
+      unsubWatcher();
     };
   }, [loadPhotoData, loadDocData]);
 
