@@ -25,7 +25,7 @@ const FORMAT_CONFIG: Record<DocFormat, { label: string; bg: string; color: strin
   txt: { label: 'TXT', bg: 'rgba(100, 116, 139, 0.9)', color: '#ffffff' },
 };
 
-export const DocCard: React.FC<DocCardProps> = ({
+export const DocCard = React.memo<DocCardProps>(({
   doc,
   isSelected,
   onToggleSelect,
@@ -147,4 +147,6 @@ export const DocCard: React.FC<DocCardProps> = ({
       </div>
     </div>
   );
-};
+});
+
+DocCard.displayName = 'DocCard';

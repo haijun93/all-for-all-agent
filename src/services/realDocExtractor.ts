@@ -629,16 +629,16 @@ export class RealDocExtractor {
       }
     }
 
-    // 4. Calibre Step F: First Spine HTML page inspection (Embedded <img> or <svg>)
+    // 4. Calibre Step F: First Spine HTML page inspection (Fast Regex extraction without heavy DOMParser)
     if (firstSpineHtmlHref) {
       const fullHtmlPath = resolveZipPath(opfDir, firstSpineHtmlHref);
       const htmlFile = zip.file(fullHtmlPath) || zip.file(firstSpineHtmlHref);
       if (htmlFile) {
         try {
           const htmlText = await htmlFile.async('text');
-          const htmlDoc = new DOMParser().parseFromString(htmlText, 'text/html');
-          const img = htmlDoc.querySelector('img, image');
-          const src = img?.getAttribute('src') || img?.getAttribute('xlink:href') || img?.getAttribute('href');
+          // Fast regex check to avoid heavy DOM allocation on large chapter HTMLs
+          const imgMatch = htmlText.match(/<(?:img|image)[^>]+(?:src|xlink:href|href)=["']([^"']+)["']/i);
+          const src = imgMatch ? imgMatch[1] : null;
           if (src) {
             const htmlDir = fullHtmlPath.includes('/') ? fullHtmlPath.substring(0, fullHtmlPath.lastIndexOf('/') + 1) : '';
             const imgPath = resolveZipPath(htmlDir, src);
@@ -649,7 +649,7 @@ export class RealDocExtractor {
               const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
               return {
                 thumbnailUrl: `data:${mime};base64,${base64}`,
-                extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n\n${bookDescription || htmlDoc.body.textContent?.slice(0, 300) || ''}`,
+                extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n\n${bookDescription || ''}`,
                 pageCount: 250,
               };
             }

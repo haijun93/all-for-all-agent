@@ -96,16 +96,12 @@ export const App: React.FC = () => {
     loadPhotoData();
     loadDocData();
 
-    // 1. Live stream new documents discovered by background indexer
-    const unsubStream = BackgroundIndexer.subscribeDocStream((newDoc) => {
+    // 1. Live stream batched new documents discovered by background indexer (Throttled to prevent UI freeze)
+    const unsubStream = BackgroundIndexer.subscribeDocBatch((batchDocs) => {
       setDocuments((prev) => {
-        const idx = prev.findIndex((d) => d.id === newDoc.id);
-        if (idx !== -1) {
-          const next = [...prev];
-          next[idx] = newDoc;
-          return next;
-        }
-        return [newDoc, ...prev];
+        const idMap = new Set(batchDocs.map((d) => d.id));
+        const filteredPrev = prev.filter((d) => !idMap.has(d.id));
+        return [...batchDocs, ...filteredPrev];
       });
     });
 

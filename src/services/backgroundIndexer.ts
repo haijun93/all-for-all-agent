@@ -39,6 +39,12 @@ export class BackgroundIndexer {
   private static lastFileList: FileList | null = null;
   private static statusListeners = new Set<StatusListener>();
   private static docStreamListeners = new Set<DocStreamListener>();
+  private static docBatchListeners = new Set<(batch: DocumentItem[]) => void>();
+
+  private static pendingBatch: DocumentItem[] = [];
+  private static batchTimer: any = null;
+  private static lastNotifyTime = 0;
+  private static notifyTimer: any = null;
 
   public static getStatus(): IndexingStatus {
     return { ...this.status };
@@ -47,12 +53,12 @@ export class BackgroundIndexer {
   public static showHUD(): void {
     this.status.isHUDOpen = true;
     this.status.isMinimized = false;
-    this.notifyStatus();
+    this.notifyStatus(true);
   }
 
   public static hideHUD(): void {
     this.status.isHUDOpen = false;
-    this.notifyStatus();
+    this.notifyStatus(true);
   }
 
   public static toggleHUD(): void {
@@ -64,7 +70,7 @@ export class BackgroundIndexer {
     } else {
       this.status.isMinimized = false;
     }
-    this.notifyStatus();
+    this.notifyStatus(true);
   }
 
   public static setMinimized(minimized: boolean): void {
@@ -72,7 +78,7 @@ export class BackgroundIndexer {
     if (!minimized) {
       this.status.isHUDOpen = true;
     }
-    this.notifyStatus();
+    this.notifyStatus(true);
   }
 
   public static cancelCurrentScan(): void {
@@ -80,7 +86,8 @@ export class BackgroundIndexer {
     this.status.isIndexing = false;
     this.status.currentFileName = '🛑 인덱싱 중지됨';
     this.status.statusMessage = '사용자에 의해 인덱싱이 즉시 중지되었습니다.';
-    this.notifyStatus();
+    this.flushDocBatch();
+    this.notifyStatus(true);
   }
 
   public static async resumeOrRestartScan(): Promise<void> {
@@ -106,15 +113,69 @@ export class BackgroundIndexer {
     return () => this.docStreamListeners.delete(listener);
   }
 
-  private static notifyStatus(): void {
-    const s = this.getStatus();
-    this.statusListeners.forEach((fn) => {
+  public static subscribeDocBatch(listener: (batch: DocumentItem[]) => void): () => void {
+    this.docBatchListeners.add(listener);
+    return () => this.docBatchListeners.delete(listener);
+  }
+
+  public static enqueueDocStream(doc: DocumentItem): void {
+    // 1. Single stream listener for fast lookup
+    this.docStreamListeners.forEach((fn) => {
       try {
-        fn(s);
+        fn(doc);
       } catch (e) {
         console.warn(e);
       }
     });
+
+    // 2. Batch stream listener for React state batching (every 100ms)
+    this.pendingBatch.push(doc);
+    if (!this.batchTimer) {
+      this.batchTimer = setTimeout(() => {
+        this.flushDocBatch();
+      }, 100);
+    }
+  }
+
+  public static flushDocBatch(): void {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    if (this.pendingBatch.length === 0) return;
+    const batch = [...this.pendingBatch];
+    this.pendingBatch = [];
+    this.docBatchListeners.forEach((fn) => {
+      try {
+        fn(batch);
+      } catch (e) {
+        console.warn(e);
+      }
+    });
+  }
+
+  private static notifyStatus(force = false): void {
+    const now = performance.now();
+    if (force || now - this.lastNotifyTime >= 100) {
+      if (this.notifyTimer) {
+        clearTimeout(this.notifyTimer);
+        this.notifyTimer = null;
+      }
+      this.lastNotifyTime = now;
+      const s = this.getStatus();
+      this.statusListeners.forEach((fn) => {
+        try {
+          fn(s);
+        } catch (e) {
+          console.warn(e);
+        }
+      });
+    } else if (!this.notifyTimer) {
+      this.notifyTimer = setTimeout(() => {
+        this.notifyTimer = null;
+        this.notifyStatus(true);
+      }, 100);
+    }
   }
 
   /**
@@ -232,15 +293,9 @@ export class BackgroundIndexer {
 
                 instantDocs.push(doc);
 
-                // Live stream each document to UI immediately
+                // Live stream each document in batches to prevent UI thread lockup
                 FastDocIndex.addDocument(doc);
-                this.docStreamListeners.forEach((fn) => {
-                  try {
-                    fn(doc);
-                  } catch (e) {
-                    console.warn(e);
-                  }
-                });
+                this.enqueueDocStream(doc);
 
                 // Compute live speedometer
                 const elapsed = Math.max(1, performance.now() - startTime);
@@ -252,7 +307,10 @@ export class BackgroundIndexer {
                 this.status.docsPerSecond = speed;
                 this.status.elapsedMs = Math.round(elapsed);
                 this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
-                this.notifyStatus();
+                this.notifyStatus(false);
+
+                // Cooperative event-loop yield (6ms) so UI stays 100% responsive and GC runs cleanly
+                await new Promise((r) => setTimeout(r, 6));
               } catch (fileErr) {
                 console.warn('Error reading file:', entry.name, fileErr);
               }
@@ -265,6 +323,7 @@ export class BackgroundIndexer {
       };
 
       await traverse(dirHandle, rootName);
+      this.flushDocBatch();
 
       if (this.currentScanId !== scanId) return;
 
@@ -280,13 +339,15 @@ export class BackgroundIndexer {
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
       this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+      this.notifyStatus(true);
     } catch (err) {
       console.error('Background indexer error:', err);
       this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
     } finally {
+      this.flushDocBatch();
       if (this.currentScanId === scanId) {
         this.status.isIndexing = false;
-        this.notifyStatus();
+        this.notifyStatus(true);
       }
     }
   }
@@ -334,13 +395,7 @@ export class BackgroundIndexer {
             instantDocs.push(doc);
 
             FastDocIndex.addDocument(doc);
-            this.docStreamListeners.forEach((fn) => {
-              try {
-                fn(doc);
-              } catch (e) {
-                console.warn(e);
-              }
-            });
+            this.enqueueDocStream(doc);
 
             const elapsed = Math.max(1, performance.now() - startTime);
             const speed = Math.round((instantDocs.length / (elapsed / 1000)));
@@ -351,12 +406,17 @@ export class BackgroundIndexer {
             this.status.docsPerSecond = speed;
             this.status.elapsedMs = Math.round(elapsed);
             this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
-            this.notifyStatus();
+            this.notifyStatus(false);
+
+            // Yield to browser event loop
+            await new Promise((r) => setTimeout(r, 6));
           } catch (fileErr) {
             console.warn('Error reading file:', file.name, fileErr);
           }
         }
       }
+
+      this.flushDocBatch();
 
       if (this.currentScanId !== scanId) return;
 
@@ -371,13 +431,15 @@ export class BackgroundIndexer {
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
       this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+      this.notifyStatus(true);
     } catch (err) {
       console.error('Background indexer error:', err);
       this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
     } finally {
+      this.flushDocBatch();
       if (this.currentScanId === scanId) {
         this.status.isIndexing = false;
-        this.notifyStatus();
+        this.notifyStatus(true);
       }
     }
   }
