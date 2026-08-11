@@ -99,9 +99,16 @@ export const App: React.FC = () => {
     // 1. Live stream batched new documents discovered by background indexer (Throttled to prevent UI freeze)
     const unsubStream = BackgroundIndexer.subscribeDocBatch((batchDocs) => {
       setDocuments((prev) => {
-        const idMap = new Set(batchDocs.map((d) => d.id));
-        const filteredPrev = prev.filter((d) => !idMap.has(d.id));
-        return [...batchDocs, ...filteredPrev];
+        // Build a set of new IDs for O(1) dedup lookup
+        const newIds = new Set<string>();
+        for (let i = 0; i < batchDocs.length; i++) newIds.add(batchDocs[i].id);
+        // Only allocate new array if there are actual new docs to add
+        const filtered = prev.filter((d) => !newIds.has(d.id));
+        if (filtered.length === prev.length) {
+          // All batch docs are new — just append
+          return prev.concat(batchDocs);
+        }
+        return filtered.concat(batchDocs);
       });
     });
 

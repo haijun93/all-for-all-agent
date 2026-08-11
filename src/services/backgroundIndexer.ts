@@ -119,14 +119,14 @@ export class BackgroundIndexer {
   }
 
   public static enqueueDocStream(doc: DocumentItem): void {
-    // Batch stream listener for React state batching (every 150ms or 15 items)
+    // Batch stream listener for React state batching (every 120ms or 10 items)
     this.pendingBatch.push(doc);
-    if (this.pendingBatch.length >= 15) {
+    if (this.pendingBatch.length >= 10) {
       this.flushDocBatch();
     } else if (!this.batchTimer) {
       this.batchTimer = setTimeout(() => {
         this.flushDocBatch();
-      }, 150);
+      }, 120);
     }
   }
 
@@ -212,10 +212,11 @@ export class BackgroundIndexer {
       initialAnalysis.category
     );
 
-    // Re-analyze keywords on real extracted text
+    // Re-analyze keywords on real extracted text (truncated to save memory)
+    const truncatedText = realData.extractedText.slice(0, 500);
     const deepAnalysis = KeywordEngine.analyzeDocumentText(
       title,
-      `${title}\n${realData.extractedText}`
+      `${title}\n${truncatedText}`
     );
 
     return {
@@ -304,15 +305,20 @@ export class BackgroundIndexer {
                 this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
                 this.notifyStatus(false);
 
-                // Periodic incremental save to IndexedDB in lightweight chunks of 30 items
-                if (unpersistedBuffer.length >= 30) {
+                // Periodic incremental save to IndexedDB in lightweight chunks of 20 items
+                if (unpersistedBuffer.length >= 20) {
                   const chunk = [...unpersistedBuffer];
                   unpersistedBuffer = [];
                   DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
                 }
 
-                // Cooperative event-loop yield (10ms) so UI stays 100% responsive and GC runs cleanly
-                await new Promise((r) => setTimeout(r, 10));
+                // Cooperative event-loop yield (25ms) so UI stays 100% responsive and GC runs cleanly
+                await new Promise((r) => setTimeout(r, 25));
+
+                // Give GC a longer breathing window every 50 files to reclaim accumulated garbage
+                if (totalCount % 50 === 0) {
+                  await new Promise((r) => setTimeout(r, 100));
+                }
               } catch (fileErr) {
                 console.warn('Error reading file:', entry.name, fileErr);
               }
@@ -416,14 +422,19 @@ export class BackgroundIndexer {
             this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
             this.notifyStatus(false);
 
-            if (unpersistedBuffer.length >= 30) {
+            if (unpersistedBuffer.length >= 20) {
               const chunk = [...unpersistedBuffer];
               unpersistedBuffer = [];
               DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
             }
 
-            // Yield to browser event loop (10ms)
-            await new Promise((r) => setTimeout(r, 10));
+            // Yield to browser event loop (25ms)
+            await new Promise((r) => setTimeout(r, 25));
+
+            // Give GC a longer breathing window every 50 files
+            if (totalCount % 50 === 0) {
+              await new Promise((r) => setTimeout(r, 100));
+            }
           } catch (fileErr) {
             console.warn('Error reading file:', file.name, fileErr);
           }

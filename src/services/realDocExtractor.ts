@@ -93,6 +93,12 @@ export class RealDocExtractor {
     return new Promise((resolve) => {
       try {
         const img = new Image();
+        const cleanup = () => {
+          // Release decoded bitmap memory immediately
+          img.onload = null;
+          img.onerror = null;
+          img.src = '';
+        };
         img.onload = () => {
           try {
             const aspect = img.width / img.height;
@@ -120,19 +126,23 @@ export class RealDocExtractor {
               ctx.fillStyle = '#ffffff';
               ctx.fillRect(0, 0, targetW, targetH);
               ctx.drawImage(img, 0, 0, targetW, targetH);
-              const compressedUrl = canvas.toDataURL('image/jpeg', 0.82);
+              const compressedUrl = canvas.toDataURL('image/jpeg', 0.72);
               canvas.width = 0;
               canvas.height = 0;
+              cleanup();
               resolve(compressedUrl);
             } else {
+              cleanup();
               resolve(`data:${mimeType};base64,${base64Data}`);
             }
           } catch {
+            cleanup();
             resolve(`data:${mimeType};base64,${base64Data}`);
           }
         };
 
         img.onerror = () => {
+          cleanup();
           resolve(`data:${mimeType};base64,${base64Data}`);
         };
 
@@ -183,7 +193,7 @@ export class RealDocExtractor {
         .join(' ');
 
       const cleanText = textItems.replace(/\s+/g, ' ').trim() || file.name;
-      const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.72);
 
       // Clean up canvas
       canvas.width = 0;
@@ -191,7 +201,7 @@ export class RealDocExtractor {
 
       return {
         thumbnailUrl,
-        extractedText: cleanText.slice(0, 1500),
+        extractedText: cleanText.slice(0, 500),
         pageCount,
       };
     } finally {
@@ -290,9 +300,13 @@ export class RealDocExtractor {
       }
     }
 
+    const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.72);
+    canvas.width = 0;
+    canvas.height = 0;
+
     return {
-      thumbnailUrl: canvas.toDataURL('image/jpeg', 0.85),
-      extractedText: extractedText || title,
+      thumbnailUrl,
+      extractedText: (extractedText || title).slice(0, 500),
       pageCount: Math.max(1, Math.ceil(paragraphs.length / 5)),
     };
   }
@@ -392,10 +406,13 @@ export class RealDocExtractor {
     }
 
     const fullText = cellRows.map((r) => r.map((c) => c.val).join('\t')).join('\n');
+    const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.72);
+    canvas.width = 0;
+    canvas.height = 0;
 
     return {
-      thumbnailUrl: canvas.toDataURL('image/jpeg', 0.85),
-      extractedText: fullText || title,
+      thumbnailUrl,
+      extractedText: (fullText || title).slice(0, 500),
       pageCount: Math.max(1, cellRows.length),
     };
   }
@@ -928,7 +945,7 @@ export class RealDocExtractor {
 
     return {
       thumbnailUrl: thumb,
-      extractedText: text.slice(0, 2000),
+      extractedText: text.slice(0, 500),
       pageCount: 1,
     };
   }
