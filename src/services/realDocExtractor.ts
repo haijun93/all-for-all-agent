@@ -421,44 +421,284 @@ export class RealDocExtractor {
   }
 
   /**
-   * 6. Real EPUB eBook Cover Image Extraction
+   * 6. Calibre-Standard Real EPUB 2.0 & 3.0 Cover Image & Metadata Extraction Engine
+   * Follows the exact Calibre specification:
+   *  1. META-INF/container.xml -> OPF rootfile path
+   *  2. OPF EPUB 3: <item properties="cover-image" href="..."/>
+   *  3. OPF EPUB 2: <meta name="cover" content="item_id"/> -> <manifest item>
+   *  4. OPF <guide><reference type="cover" href="..."/></guide> (including XHTML cover wrapper parsing)
+   *  5. OPF Manifest heuristics (/cover/i, /jacket/i, /titlepage/i)
+   *  6. OPF Spine first itemref XHTML 1st page extraction
+   *  7. Rich metadata extraction (dc:title, dc:creator, dc:publisher, dc:description, dc:date)
    */
   private static async extractEpub(file: File, category: string): Promise<RealDocParseResult> {
     const zip = await JSZip.loadAsync(file);
 
-    // Search for cover image inside EPUB zip
-    const coverFiles = Object.keys(zip.files).filter((name) =>
-      /(cover\.(jpe?g|png)|images\/cover\.(jpe?g|png)|OEBPS\/.*cover\.(jpe?g|png))/i.test(name)
-    );
+    // 1. Locate OPF file via META-INF/container.xml
+    let opfPath = 'OEBPS/content.opf';
+    const containerFile = zip.file('META-INF/container.xml') || zip.file('meta-inf/container.xml');
+    if (containerFile) {
+      try {
+        const containerXml = await containerFile.async('text');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(containerXml, 'application/xml');
+        const rootfile = doc.querySelector('rootfile');
+        if (rootfile && rootfile.getAttribute('full-path')) {
+          opfPath = rootfile.getAttribute('full-path')!;
+        }
+      } catch (e) {
+        console.warn('[RealDocExtractor:EPUB] Failed to parse container.xml:', e);
+      }
+    }
 
-    if (coverFiles.length > 0) {
-      const coverFile = zip.file(coverFiles[0]);
-      if (coverFile) {
-        const base64 = await coverFile.async('base64');
-        const mime = coverFiles[0].endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+
+    let coverHref: string | null = null;
+    let bookTitle = file.name.replace(/\.[^/.]+$/, '');
+    let bookAuthor = '';
+    let bookPublisher = '';
+    let bookDescription = '';
+    let bookDate = new Date(file.lastModified).toISOString().split('T')[0];
+    let firstSpineHtmlHref: string | null = null;
+
+    // Helper: Normalize relative path resolution inside zip
+    const resolveZipPath = (baseDir: string, relPath: string): string => {
+      const clean = relPath.split('#')[0].split('?')[0];
+      if (clean.startsWith('/')) return clean.slice(1);
+      const combined = (baseDir + clean).replace(/\\/g, '/');
+      const parts = combined.split('/');
+      const stack: string[] = [];
+      for (const part of parts) {
+        if (part === '.' || part === '') continue;
+        if (part === '..') stack.pop();
+        else stack.push(part);
+      }
+      return stack.join('/');
+    };
+
+    // 2. Parse OPF Package File
+    const opfCandidates = [
+      opfPath,
+      'content.opf',
+      'OEBPS/content.opf',
+      'oebps/content.opf',
+      'EPUB/package.opf',
+      'epub/package.opf',
+    ];
+    let opfFile: JSZip.JSZipObject | null = null;
+    for (const cand of opfCandidates) {
+      const found = zip.file(cand);
+      if (found) {
+        opfFile = found;
+        break;
+      }
+    }
+
+    if (opfFile) {
+      try {
+        const opfXml = await opfFile.async('text');
+        const parser = new DOMParser();
+        const opfDoc = parser.parseFromString(opfXml, 'application/xml');
+
+        // Extract Dublin Core Metadata
+        const titleNode = opfDoc.querySelector('title, dc\\:title');
+        if (titleNode?.textContent?.trim()) bookTitle = titleNode.textContent.trim();
+
+        const creatorNode = opfDoc.querySelector('creator, dc\\:creator');
+        if (creatorNode?.textContent?.trim()) bookAuthor = creatorNode.textContent.trim();
+
+        const publisherNode = opfDoc.querySelector('publisher, dc\\:publisher');
+        if (publisherNode?.textContent?.trim()) bookPublisher = publisherNode.textContent.trim();
+
+        const descNode = opfDoc.querySelector('description, dc\\:description');
+        if (descNode?.textContent?.trim()) bookDescription = descNode.textContent.trim();
+
+        const dateNode = opfDoc.querySelector('date, dc\\:date');
+        if (dateNode?.textContent?.trim()) {
+          const parsed = dateNode.textContent.trim().slice(0, 10);
+          if (/^\d{4}/.test(parsed)) bookDate = parsed;
+        }
+
+        // Build Manifest Table
+        const manifestItems = Array.from(opfDoc.querySelectorAll('manifest item'));
+        const manifestMap = new Map<string, { href: string; mediaType: string; properties?: string }>();
+        manifestItems.forEach((item) => {
+          const id = item.getAttribute('id') || '';
+          const href = item.getAttribute('href') || '';
+          const mediaType = (item.getAttribute('media-type') || '').toLowerCase();
+          const properties = item.getAttribute('properties') || '';
+          if (id || href) {
+            manifestMap.set(id, { href, mediaType, properties });
+          }
+        });
+
+        // Calibre Step A: EPUB 3 properties="cover-image"
+        for (const [_, item] of manifestMap.entries()) {
+          if (item.properties?.includes('cover-image') && item.mediaType.startsWith('image/')) {
+            coverHref = item.href;
+            break;
+          }
+        }
+
+        // Calibre Step B: EPUB 2 <meta name="cover" content="item_id"/>
+        if (!coverHref) {
+          const metaCover = opfDoc.querySelector('meta[name="cover"]');
+          if (metaCover) {
+            const coverId = metaCover.getAttribute('content');
+            if (coverId && manifestMap.has(coverId)) {
+              coverHref = manifestMap.get(coverId)!.href;
+            }
+          }
+        }
+
+        // Calibre Step C: <guide><reference type="cover" href="..."/></guide>
+        if (!coverHref) {
+          const guideCover = opfDoc.querySelector('guide reference[type="cover"]');
+          if (guideCover) {
+            const refHref = guideCover.getAttribute('href');
+            if (refHref) {
+              if (/\.(jpe?g|png|webp|gif)$/i.test(refHref)) {
+                coverHref = refHref;
+              } else {
+                // Points to an XHTML cover page (e.g. cover.xhtml or titlepage.xhtml)
+                const coverHtmlPath = resolveZipPath(opfDir, refHref);
+                const coverHtmlFile = zip.file(coverHtmlPath) || zip.file(refHref);
+                if (coverHtmlFile) {
+                  try {
+                    const htmlText = await coverHtmlFile.async('text');
+                    const htmlDoc = new DOMParser().parseFromString(htmlText, 'text/html');
+                    const img = htmlDoc.querySelector('img, image');
+                    const src = img?.getAttribute('src') || img?.getAttribute('xlink:href') || img?.getAttribute('href');
+                    if (src) {
+                      const htmlDir = coverHtmlPath.includes('/') ? coverHtmlPath.substring(0, coverHtmlPath.lastIndexOf('/') + 1) : '';
+                      coverHref = resolveZipPath(htmlDir, src);
+                    }
+                  } catch (e) {
+                    console.warn('[RealDocExtractor:EPUB] Cover HTML parse failed:', e);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Calibre Step D: Manifest Heuristic Search
+        if (!coverHref) {
+          for (const [id, item] of manifestMap.entries()) {
+            if (item.mediaType.startsWith('image/')) {
+              if (/cover/i.test(id) || /cover/i.test(item.href) || /jacket/i.test(item.href) || /title/i.test(item.href)) {
+                coverHref = item.href;
+                break;
+              }
+            }
+          }
+        }
+
+        // Calibre Step E: First Spine Item for 1st page extraction
+        const firstItemref = opfDoc.querySelector('spine itemref');
+        if (firstItemref) {
+          const idref = firstItemref.getAttribute('idref');
+          if (idref && manifestMap.has(idref)) {
+            firstSpineHtmlHref = manifestMap.get(idref)!.href;
+          }
+        }
+      } catch (e) {
+        console.warn('[RealDocExtractor:EPUB] OPF parse failed:', e);
+      }
+    }
+
+    // 3. Load cover image from zip if resolved
+    if (coverHref) {
+      const fullCoverPath = resolveZipPath(opfDir, coverHref);
+      let imgFile = zip.file(fullCoverPath) || zip.file(coverHref);
+      if (!imgFile) {
+        const lower = fullCoverPath.toLowerCase();
+        const matchKey = Object.keys(zip.files).find((k) => k.toLowerCase() === lower);
+        if (matchKey) imgFile = zip.file(matchKey);
+      }
+
+      if (imgFile) {
+        const base64 = await imgFile.async('base64');
+        const ext = imgFile.name.split('.').pop()?.toLowerCase() || 'jpeg';
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
         return {
           thumbnailUrl: `data:${mime};base64,${base64}`,
-          extractedText: `${file.name.replace(/\.[^/.]+$/, '')} 전자책 EPUB 도서`,
-          pageCount: 200,
+          extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n출판사: ${bookPublisher || '전자출판'}\n\n[도서 소개]\n${bookDescription || 'EPUB 표준 전자책입니다.'}`,
+          pageCount: 250,
         };
       }
     }
 
-    const title = file.name.replace(/\.[^/.]+$/, '');
-    const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
+    // 4. Calibre Step F: First Spine HTML page inspection (Embedded <img> or <svg>)
+    if (firstSpineHtmlHref) {
+      const fullHtmlPath = resolveZipPath(opfDir, firstSpineHtmlHref);
+      const htmlFile = zip.file(fullHtmlPath) || zip.file(firstSpineHtmlHref);
+      if (htmlFile) {
+        try {
+          const htmlText = await htmlFile.async('text');
+          const htmlDoc = new DOMParser().parseFromString(htmlText, 'text/html');
+          const img = htmlDoc.querySelector('img, image');
+          const src = img?.getAttribute('src') || img?.getAttribute('xlink:href') || img?.getAttribute('href');
+          if (src) {
+            const htmlDir = fullHtmlPath.includes('/') ? fullHtmlPath.substring(0, fullHtmlPath.lastIndexOf('/') + 1) : '';
+            const imgPath = resolveZipPath(htmlDir, src);
+            const embeddedImgFile = zip.file(imgPath) || zip.file(src);
+            if (embeddedImgFile) {
+              const base64 = await embeddedImgFile.async('base64');
+              const ext = embeddedImgFile.name.split('.').pop()?.toLowerCase() || 'jpeg';
+              const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+              return {
+                thumbnailUrl: `data:${mime};base64,${base64}`,
+                extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n\n${bookDescription || htmlDoc.body.textContent?.slice(0, 300) || ''}`,
+                pageCount: 250,
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('[RealDocExtractor:EPUB] Spine HTML parse failed:', e);
+        }
+      }
+    }
+
+    // 5. Calibre Step G: Fallback to any valid image inside zip with cover heuristic
+    const allImages = Object.keys(zip.files).filter((k) =>
+      /\.(jpe?g|png|webp)$/i.test(k) && !zip.files[k].dir && !k.includes('__MACOSX')
+    );
+    if (allImages.length > 0) {
+      allImages.sort((a, b) => {
+        const aIsCover = /cover/i.test(a) ? -1 : 1;
+        const bIsCover = /cover/i.test(b) ? -1 : 1;
+        if (aIsCover !== bIsCover) return aIsCover - bIsCover;
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const fallbackImg = zip.file(allImages[0]);
+      if (fallbackImg) {
+        const base64 = await fallbackImg.async('base64');
+        const ext = fallbackImg.name.split('.').pop()?.toLowerCase() || 'jpeg';
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        return {
+          thumbnailUrl: `data:${mime};base64,${base64}`,
+          extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n\n${bookDescription || ''}`,
+          pageCount: 250,
+        };
+      }
+    }
+
+    // 6. Ultimate Fallback: High-res e-Book Book Cover Canvas
     const thumb = DocRendererService.generateDocumentFirstPageThumbnail(
-      title,
+      bookTitle,
       'epub',
       category,
-      `${title} 전자책`,
-      dateStr,
-      '전자책 저자'
+      bookDescription || `${bookTitle} 전자책`,
+      bookDate,
+      bookAuthor || '전자책 저자'
     );
 
     return {
       thumbnailUrl: thumb,
-      extractedText: `${title} EPUB 도서`,
-      pageCount: 200,
+      extractedText: `[전자책 EPUB] ${bookTitle}\n저자: ${bookAuthor || '작가 미상'}\n\n${bookDescription || ''}`,
+      pageCount: 250,
     };
   }
 
