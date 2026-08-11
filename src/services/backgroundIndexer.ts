@@ -309,8 +309,14 @@ export class BackgroundIndexer {
                 this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
                 this.notifyStatus(false);
 
-                // Cooperative event-loop yield (6ms) so UI stays 100% responsive and GC runs cleanly
-                await new Promise((r) => setTimeout(r, 6));
+                // Periodic incremental save to IndexedDB every 40 items to keep transactions fast
+                if (instantDocs.length % 40 === 0) {
+                  const chunk = instantDocs.slice(-40);
+                  DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
+                }
+
+                // Cooperative event-loop yield (12ms) so UI stays 100% responsive and GC runs cleanly
+                await new Promise((r) => setTimeout(r, 12));
               } catch (fileErr) {
                 console.warn('Error reading file:', entry.name, fileErr);
               }
@@ -408,8 +414,13 @@ export class BackgroundIndexer {
             this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
             this.notifyStatus(false);
 
-            // Yield to browser event loop
-            await new Promise((r) => setTimeout(r, 6));
+            if (instantDocs.length % 40 === 0) {
+              const chunk = instantDocs.slice(-40);
+              DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
+            }
+
+            // Yield to browser event loop (12ms)
+            await new Promise((r) => setTimeout(r, 12));
           } catch (fileErr) {
             console.warn('Error reading file:', file.name, fileErr);
           }

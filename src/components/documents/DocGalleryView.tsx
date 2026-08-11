@@ -90,7 +90,11 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
         const isAllSelected = groupDocIds.every((id) => selectedDocIds.has(id));
 
         return (
-          <section key={group.key} className="gallery-group">
+          <section
+            key={group.key}
+            className="gallery-group"
+            style={{ contentVisibility: 'auto', containIntrinsicSize: '1px 350px' }}
+          >
             <div className="gallery-group-header">
               <div className="gallery-group-title">
                 {groupBy === 'category' ? (
