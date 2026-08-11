@@ -21,6 +21,7 @@ import { ProgressiveDocWorker } from './services/progressiveDocWorker';
 import { BackgroundIndexer } from './services/backgroundIndexer';
 import { LightningIndexer } from './services/lightningIndexer';
 import { ElectronWatcherService } from './services/electronWatcher';
+import { TrayWatcherService } from './services/trayWatcher';
 
 // Document Studio Components
 import { DocSidebar } from './components/documents/DocSidebar';
@@ -144,11 +145,30 @@ export const App: React.FC = () => {
       );
     });
 
+    // 5. Initialize Native Tauri OS Kernel Watcher & System Tray Sync
+    TrayWatcherService.init();
+    const unsubTray = TrayWatcherService.subscribe((change) => {
+      if (change.type === 'delete') {
+        setDocuments((prev) => prev.filter((d) => d.id !== change.docId));
+      } else if (change.doc) {
+        setDocuments((prev) => {
+          const idx = prev.findIndex((d) => d.id === change.docId);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = change.doc!;
+            return next;
+          }
+          return [change.doc!, ...prev];
+        });
+      }
+    });
+
     return () => {
       unsubStream();
       unsubWorker();
       unsubWatcher();
       unsubLightning();
+      unsubTray();
     };
   }, [loadPhotoData, loadDocData]);
 

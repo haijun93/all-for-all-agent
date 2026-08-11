@@ -6,6 +6,7 @@ import { DocStorageService } from './docStorage';
 import { BackgroundIndexer } from './backgroundIndexer';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { TrayWatcherService } from './trayWatcher';
 
 /**
  * ⚡ Lightning Indexer — Everything-style instant file scanning.
@@ -203,7 +204,7 @@ export class LightningIndexer {
   }
 
   private static async tauriLightningScan(path: string): Promise<void> {
-    const scanId = BackgroundIndexer.nextScanId();
+    BackgroundIndexer.nextScanId();
     BackgroundIndexer.setLastScan(null, null);
 
     console.log(`[LightningIndexer] Starting Tauri Rust Scan for '${path}'`);
@@ -312,6 +313,9 @@ export class LightningIndexer {
         isIndexing: false,
         isHUDOpen: true,
       }, true);
+
+      // Auto-watch folder in background
+      TrayWatcherService.watchFolder(path);
       
     } catch (e) {
       console.error(e);
@@ -540,7 +544,7 @@ export class LightningIndexer {
   /**
    * Phase 3: FileSystemObserver — real-time file change monitoring.
    */
-  private static async startFileSystemObserver(dirHandle: any): Promise<void> {
+  public static async _startFileSystemObserver(dirHandle: any): Promise<void> {
     if (this.fileSystemObserver) {
       try {
         this.fileSystemObserver.disconnect();

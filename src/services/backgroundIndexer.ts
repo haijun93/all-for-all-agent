@@ -5,6 +5,7 @@ import { DocStorageService } from './docStorage';
 import { RealDocExtractor } from './realDocExtractor';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { TrayWatcherService } from './trayWatcher';
 
 export interface IndexingStatus {
   isIndexing: boolean;
@@ -405,6 +406,9 @@ export class BackgroundIndexer {
       isIndexing: false,
       isHUDOpen: true,
     }, true);
+
+    // Auto-watch folder in background
+    TrayWatcherService.watchFolder(folderPath);
   }
 
   /**
