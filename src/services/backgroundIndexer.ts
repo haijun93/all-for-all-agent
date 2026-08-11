@@ -14,6 +14,7 @@ export interface IndexingStatus {
   elapsedMs: number;
   statusMessage: string;
   isMinimized: boolean;
+  isHUDOpen: boolean;
 }
 
 type StatusListener = (status: IndexingStatus) => void;
@@ -30,6 +31,7 @@ export class BackgroundIndexer {
     elapsedMs: 0,
     statusMessage: '대기 중',
     isMinimized: false,
+    isHUDOpen: false,
   };
 
   private static currentScanId = 0;
@@ -42,8 +44,34 @@ export class BackgroundIndexer {
     return { ...this.status };
   }
 
+  public static showHUD(): void {
+    this.status.isHUDOpen = true;
+    this.status.isMinimized = false;
+    this.notifyStatus();
+  }
+
+  public static hideHUD(): void {
+    this.status.isHUDOpen = false;
+    this.notifyStatus();
+  }
+
+  public static toggleHUD(): void {
+    if (!this.status.isHUDOpen) {
+      this.status.isHUDOpen = true;
+      this.status.isMinimized = false;
+    } else if (!this.status.isMinimized) {
+      this.status.isMinimized = true;
+    } else {
+      this.status.isMinimized = false;
+    }
+    this.notifyStatus();
+  }
+
   public static setMinimized(minimized: boolean): void {
     this.status.isMinimized = minimized;
+    if (!minimized) {
+      this.status.isHUDOpen = true;
+    }
     this.notifyStatus();
   }
 
@@ -177,6 +205,7 @@ export class BackgroundIndexer {
       elapsedMs: 0,
       statusMessage: `'${dirHandle.name}' 실시간 1페이지 파싱 및 인덱싱 시작...`,
       isMinimized: false,
+      isHUDOpen: true,
     };
     this.notifyStatus();
 
@@ -281,6 +310,7 @@ export class BackgroundIndexer {
       elapsedMs: 0,
       statusMessage: '실제 1페이지 추출 스트림 처리 중...',
       isMinimized: false,
+      isHUDOpen: true,
     };
     this.notifyStatus();
 

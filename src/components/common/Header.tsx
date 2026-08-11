@@ -14,8 +14,10 @@ import {
   FolderSearch,
   Compass,
   FileText,
-  Camera
+  Camera,
+  Activity
 } from 'lucide-react';
+import { BackgroundIndexer } from '../../services/backgroundIndexer';
 
 export type AppMode = 'photos' | 'documents';
 
@@ -177,6 +179,25 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Play size={14} />
             <span>슬라이드쇼</span>
+          </button>
+        )}
+
+        {appMode === 'documents' && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => BackgroundIndexer.toggleHUD()}
+            title="인덱싱 작업창 숨기기 / 되살리기 (HUD 토글)"
+            style={{
+              border: '1px solid rgba(168, 85, 247, 0.4)',
+              background: 'rgba(168, 85, 247, 0.12)',
+              color: '#c084fc',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Activity size={14} color="#c084fc" />
+            <span>작업창 되살리기/숨기기</span>
           </button>
         )}
 

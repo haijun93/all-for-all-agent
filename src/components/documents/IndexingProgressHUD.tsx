@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BackgroundIndexer, type IndexingStatus } from '../../services/backgroundIndexer';
 import {
   Zap,
@@ -16,29 +16,16 @@ import {
 
 export const IndexingProgressHUD: React.FC = () => {
   const [status, setStatus] = useState<IndexingStatus>(BackgroundIndexer.getStatus());
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const wasIndexingRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = BackgroundIndexer.subscribeStatus((newStatus) => {
       setStatus(newStatus);
-
-      // Auto-show HUD when a NEW scan starts
-      if (newStatus.isIndexing && !wasIndexingRef.current) {
-        setIsDismissed(false);
-        setIsMinimized(false);
-      }
-      wasIndexingRef.current = newStatus.isIndexing;
     });
-
     return () => unsubscribe();
   }, []);
 
-  // If manually closed by user, don't show until next scan starts
-  if (isDismissed) return null;
-  // If not indexing and nothing scanned, don't render
-  if (!status.isIndexing && status.scannedCount === 0) return null;
+  // If HUD is not open, do not render
+  if (!status.isHUDOpen) return null;
 
   const isComplete = !status.isIndexing && status.scannedCount > 0 && !status.currentFileName.includes('중지');
   const isCancelled = !status.isIndexing && status.currentFileName.includes('중지');
@@ -48,12 +35,6 @@ export const IndexingProgressHUD: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     BackgroundIndexer.cancelCurrentScan();
-    setStatus((prev) => ({
-      ...prev,
-      isIndexing: false,
-      currentFileName: '🛑 인덱싱 중지됨',
-      statusMessage: '사용자에 의해 스캔이 중지되었습니다.',
-    }));
   };
 
   // Handle Restart / Resume Scan
@@ -63,34 +44,32 @@ export const IndexingProgressHUD: React.FC = () => {
     await BackgroundIndexer.resumeOrRestartScan();
   };
 
-  // Handle Minimize (Hide to Background)
-  const handleMinimize = (e: React.MouseEvent) => {
+  // Handle Hide / Minimize (작업창 숨기기)
+  const handleHideToPill = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsMinimized(true);
     BackgroundIndexer.setMinimized(true);
   };
 
-  // Handle Restore (Expand HUD)
-  const handleRestore = (e: React.MouseEvent) => {
+  // Handle Restore (작업창 되살리기 / 펼치기)
+  const handleRestoreFull = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsMinimized(false);
-    BackgroundIndexer.setMinimized(false);
+    BackgroundIndexer.showHUD();
   };
 
-  // Handle Close (Dismiss)
-  const handleDismiss = (e: React.MouseEvent) => {
+  // Handle Complete Dismiss (완전히 닫기)
+  const handleCloseCompletely = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDismissed(true);
+    BackgroundIndexer.hideHUD();
   };
 
   // 1. Minimized Floating Status Pill Mode (Bottom Right)
-  if (isMinimized || status.isMinimized) {
+  if (status.isMinimized) {
     return (
       <div
-        onClick={handleRestore}
+        onClick={handleRestoreFull}
         style={{
           position: 'fixed',
           bottom: 72,
@@ -110,7 +89,7 @@ export const IndexingProgressHUD: React.FC = () => {
           userSelect: 'none',
           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
-        title="클릭하여 인덱싱 대시보드 확장"
+        title="클릭하여 작업창 되살리기 (대시보드 확장)"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {status.isIndexing ? (
@@ -143,30 +122,33 @@ export const IndexingProgressHUD: React.FC = () => {
           {status.scannedCount}개 ({status.docsPerSecond.toLocaleString()} docs/s)
         </span>
 
-        {/* Expand Button */}
+        {/* Restore Button */}
         <button
           type="button"
-          onClick={handleRestore}
+          onClick={handleRestoreFull}
           style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            border: 'none',
-            borderRadius: '50%',
+            background: 'rgba(59, 130, 246, 0.3)',
+            border: '1px solid rgba(59, 130, 246, 0.5)',
+            borderRadius: 12,
             cursor: 'pointer',
-            padding: 4,
+            padding: '2px 8px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            color: '#94a3b8',
+            gap: 4,
+            color: '#ffffff',
+            fontSize: '0.7rem',
+            fontWeight: 700,
           }}
-          title="대시보드 펼치기"
+          title="작업창 되살리기"
         >
-          <Maximize2 size={13} />
+          <Maximize2 size={12} />
+          <span>되살리기</span>
         </button>
 
-        {/* Close Button */}
+        {/* Complete Close Button */}
         <button
           type="button"
-          onClick={handleDismiss}
+          onClick={handleCloseCompletely}
           style={{
             background: 'rgba(255, 255, 255, 0.1)',
             border: 'none',
@@ -178,7 +160,7 @@ export const IndexingProgressHUD: React.FC = () => {
             justifyContent: 'center',
             color: '#94a3b8',
           }}
-          title="완전 닫기"
+          title="작업창 완전히 닫기"
         >
           <X size={13} />
         </button>
@@ -186,7 +168,7 @@ export const IndexingProgressHUD: React.FC = () => {
     );
   }
 
-  // 2. Expanded Visual HUD Card
+  // 2. Expanded Visual HUD Card (작업창)
   return (
     <div
       style={{
@@ -248,11 +230,11 @@ export const IndexingProgressHUD: React.FC = () => {
           </div>
         </div>
 
-        {/* Top Actions: Minimize & Close */}
+        {/* Top Actions: Hide (Minimize) & Close */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             type="button"
-            onClick={handleMinimize}
+            onClick={handleHideToPill}
             style={{
               background: 'rgba(255, 255, 255, 0.08)',
               border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -264,13 +246,13 @@ export const IndexingProgressHUD: React.FC = () => {
               color: '#94a3b8',
               transition: 'all 0.15s ease',
             }}
-            title="백그라운드 최소화 (HUD 접기)"
+            title="작업창 숨기기 (플로팅 뱃지로 최소화)"
           >
             <Minimize2 size={14} />
           </button>
           <button
             type="button"
-            onClick={handleDismiss}
+            onClick={handleCloseCompletely}
             style={{
               background: 'rgba(255, 255, 255, 0.08)',
               border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -282,7 +264,7 @@ export const IndexingProgressHUD: React.FC = () => {
               color: '#94a3b8',
               transition: 'all 0.15s ease',
             }}
-            title="HUD 닫기"
+            title="작업창 완전히 닫기"
           >
             <X size={14} />
           </button>
@@ -379,7 +361,7 @@ export const IndexingProgressHUD: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         <span>소요 시간: {(status.elapsedMs / 1000).toFixed(2)}초</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Stop / Restart Scan Button */}
+          {/* Stop / Resume Scan Button */}
           {status.isIndexing ? (
             <button
               type="button"
@@ -430,10 +412,10 @@ export const IndexingProgressHUD: React.FC = () => {
             </button>
           )}
 
-          {/* Hide to Background (Minimize) Button */}
+          {/* Hide to Background (작업창 숨기기) Button */}
           <button
             type="button"
-            onClick={handleMinimize}
+            onClick={handleHideToPill}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -449,10 +431,10 @@ export const IndexingProgressHUD: React.FC = () => {
               transition: 'all 0.15s ease',
               boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)',
             }}
-            title="HUD를 접고 우측 하단 플로팅 알약 뱃지로 최소화합니다"
+            title="작업창을 숨기고 우측 하단 플로팅 알약 뱃지로 최소화합니다"
           >
             <EyeOff size={13} />
-            <span>백그라운드로 숨기기</span>
+            <span>작업창 숨기기</span>
           </button>
         </div>
       </div>
