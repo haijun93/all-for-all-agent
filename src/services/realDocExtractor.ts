@@ -149,43 +149,63 @@ export class RealDocExtractor {
   private static async extractPdf(file: File): Promise<RealDocParseResult> {
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-    const pdf = await loadingTask.promise;
-    const pageCount = pdf.numPages;
+    let pdf: any = null;
+    let page: any = null;
 
-    // Load actual Page 1
-    const page = await pdf.getPage(1);
-    const unscaledViewport = page.getViewport({ scale: 1.0 });
+    try {
+      pdf = await loadingTask.promise;
+      const pageCount = pdf.numPages;
 
-    // Target A4 thumbnail aspect ratio (~380 width)
-    const targetWidth = 380;
-    const scale = targetWidth / unscaledViewport.width;
-    const viewport = page.getViewport({ scale });
+      // Load actual Page 1
+      page = await pdf.getPage(1);
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
 
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d', { alpha: false });
+      // Target A4 thumbnail aspect ratio (~380 width)
+      const targetWidth = 380;
+      const scale = targetWidth / unscaledViewport.width;
+      const viewport = page.getViewport({ scale });
 
-    if (ctx) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await (page.render({ canvasContext: ctx, viewport } as any)).promise;
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await (page.render({ canvasContext: ctx, viewport } as any)).promise;
+      }
+
+      // Extract real text from Page 1
+      const textContent = await page.getTextContent();
+      const textItems = textContent.items
+        .map((item: any) => (item.str ? item.str : ''))
+        .join(' ');
+
+      const cleanText = textItems.replace(/\s+/g, ' ').trim() || file.name;
+      const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+      // Clean up canvas
+      canvas.width = 0;
+      canvas.height = 0;
+
+      return {
+        thumbnailUrl,
+        extractedText: cleanText.slice(0, 1500),
+        pageCount,
+      };
+    } finally {
+      try {
+        if (page) page.cleanup();
+        if (pdf) {
+          pdf.cleanup();
+          pdf.destroy();
+        }
+        if (loadingTask) loadingTask.destroy();
+      } catch (e) {
+        console.warn('PDF cleanup error:', e);
+      }
     }
-
-    // Extract real text from Page 1
-    const textContent = await page.getTextContent();
-    const textItems = textContent.items
-      .map((item: any) => (item.str ? item.str : ''))
-      .join(' ');
-
-    const cleanText = textItems.replace(/\s+/g, ' ').trim() || file.name;
-    const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-    return {
-      thumbnailUrl,
-      extractedText: cleanText,
-      pageCount,
-    };
   }
 
   /**

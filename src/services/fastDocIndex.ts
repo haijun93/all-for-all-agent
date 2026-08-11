@@ -58,10 +58,12 @@ export class FastDocIndex {
       }
     }
 
-    // 2. Index Trigrams (for substring / fuzzy matching)
-    if (searchableText.length >= 2) {
-      for (let i = 0; i <= searchableText.length - 2; i++) {
-        const trigram = searchableText.substring(i, i + 2); // 2-gram/3-gram
+    // 2. Index Trigrams for fast title/filename matching (max 80 chars per doc to prevent memory bloat)
+    const titleText = `${doc.title} ${doc.fileName}`.toLowerCase();
+    if (titleText.length >= 2) {
+      const maxLen = Math.min(titleText.length - 2, 80);
+      for (let i = 0; i <= maxLen; i++) {
+        const trigram = titleText.substring(i, i + 2);
         let set = this.trigramIndex.get(trigram);
         if (!set) {
           set = new Set();

@@ -119,21 +119,14 @@ export class BackgroundIndexer {
   }
 
   public static enqueueDocStream(doc: DocumentItem): void {
-    // 1. Single stream listener for fast lookup
-    this.docStreamListeners.forEach((fn) => {
-      try {
-        fn(doc);
-      } catch (e) {
-        console.warn(e);
-      }
-    });
-
-    // 2. Batch stream listener for React state batching (every 100ms)
+    // Batch stream listener for React state batching (every 150ms or 15 items)
     this.pendingBatch.push(doc);
-    if (!this.batchTimer) {
+    if (this.pendingBatch.length >= 15) {
+      this.flushDocBatch();
+    } else if (!this.batchTimer) {
       this.batchTimer = setTimeout(() => {
         this.flushDocBatch();
-      }, 100);
+      }, 150);
     }
   }
 
@@ -272,7 +265,8 @@ export class BackgroundIndexer {
 
     const startTime = performance.now();
     const rootName = dirHandle.name;
-    const instantDocs: DocumentItem[] = [];
+    let totalCount = 0;
+    let unpersistedBuffer: DocumentItem[] = [];
 
     try {
       const traverse = async (handle: any, path: string) => {
@@ -291,7 +285,8 @@ export class BackgroundIndexer {
                 const doc = await this.createRealDocItem(file, path);
                 if (this.currentScanId !== scanId) return;
 
-                instantDocs.push(doc);
+                totalCount++;
+                unpersistedBuffer.push(doc);
 
                 // Live stream each document in batches to prevent UI thread lockup
                 FastDocIndex.addDocument(doc);
@@ -299,24 +294,25 @@ export class BackgroundIndexer {
 
                 // Compute live speedometer
                 const elapsed = Math.max(1, performance.now() - startTime);
-                const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+                const speed = Math.round((totalCount / (elapsed / 1000)));
 
                 this.status.currentFileName = file.name;
-                this.status.scannedCount = instantDocs.length;
-                this.status.totalFound = instantDocs.length;
+                this.status.scannedCount = totalCount;
+                this.status.totalFound = totalCount;
                 this.status.docsPerSecond = speed;
                 this.status.elapsedMs = Math.round(elapsed);
                 this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 및 인덱싱 완료`;
                 this.notifyStatus(false);
 
-                // Periodic incremental save to IndexedDB every 40 items to keep transactions fast
-                if (instantDocs.length % 40 === 0) {
-                  const chunk = instantDocs.slice(-40);
+                // Periodic incremental save to IndexedDB in lightweight chunks of 30 items
+                if (unpersistedBuffer.length >= 30) {
+                  const chunk = [...unpersistedBuffer];
+                  unpersistedBuffer = [];
                   DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
                 }
 
-                // Cooperative event-loop yield (12ms) so UI stays 100% responsive and GC runs cleanly
-                await new Promise((r) => setTimeout(r, 12));
+                // Cooperative event-loop yield (10ms) so UI stays 100% responsive and GC runs cleanly
+                await new Promise((r) => setTimeout(r, 10));
               } catch (fileErr) {
                 console.warn('Error reading file:', entry.name, fileErr);
               }
@@ -333,24 +329,28 @@ export class BackgroundIndexer {
 
       if (this.currentScanId !== scanId) return;
 
-      // Bulk persist to IndexedDB
-      if (instantDocs.length > 0) {
-        await DocStorageService.saveDocumentsBulk(instantDocs);
+      // Save remaining unpersisted items
+      if (unpersistedBuffer.length > 0) {
+        await DocStorageService.saveDocumentsBulk(unpersistedBuffer);
+        unpersistedBuffer = [];
       }
 
       const totalElapsed = Math.max(1, performance.now() - startTime);
-      const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
+      const finalSpeed = Math.round((totalCount / (totalElapsed / 1000)));
 
       this.status.progressPercent = 100;
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
-      this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+      this.status.statusMessage = `인덱싱 완료! 총 ${totalCount}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
       this.notifyStatus(true);
     } catch (err) {
       console.error('Background indexer error:', err);
       this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
     } finally {
       this.flushDocBatch();
+      if (unpersistedBuffer.length > 0) {
+        DocStorageService.saveDocumentsBulk(unpersistedBuffer).catch(console.warn);
+      }
       if (this.currentScanId === scanId) {
         this.status.isIndexing = false;
         this.notifyStatus(true);
@@ -382,7 +382,8 @@ export class BackgroundIndexer {
     this.notifyStatus();
 
     const startTime = performance.now();
-    const instantDocs: DocumentItem[] = [];
+    let totalCount = 0;
+    let unpersistedBuffer: DocumentItem[] = [];
 
     try {
       for (let i = 0; i < files.length; i++) {
@@ -398,29 +399,31 @@ export class BackgroundIndexer {
             const doc = await this.createRealDocItem(file, folderPath);
             if (this.currentScanId !== scanId) return;
 
-            instantDocs.push(doc);
+            totalCount++;
+            unpersistedBuffer.push(doc);
 
             FastDocIndex.addDocument(doc);
             this.enqueueDocStream(doc);
 
             const elapsed = Math.max(1, performance.now() - startTime);
-            const speed = Math.round((instantDocs.length / (elapsed / 1000)));
+            const speed = Math.round((totalCount / (elapsed / 1000)));
 
             this.status.currentFileName = file.name;
-            this.status.scannedCount = instantDocs.length;
+            this.status.scannedCount = totalCount;
             this.status.progressPercent = Math.round(((i + 1) / files.length) * 100);
             this.status.docsPerSecond = speed;
             this.status.elapsedMs = Math.round(elapsed);
             this.status.statusMessage = `⚡️ '${file.name}' 실제 1페이지 추출 완료`;
             this.notifyStatus(false);
 
-            if (instantDocs.length % 40 === 0) {
-              const chunk = instantDocs.slice(-40);
+            if (unpersistedBuffer.length >= 30) {
+              const chunk = [...unpersistedBuffer];
+              unpersistedBuffer = [];
               DocStorageService.saveDocumentsBulk(chunk).catch(console.warn);
             }
 
-            // Yield to browser event loop (12ms)
-            await new Promise((r) => setTimeout(r, 12));
+            // Yield to browser event loop (10ms)
+            await new Promise((r) => setTimeout(r, 10));
           } catch (fileErr) {
             console.warn('Error reading file:', file.name, fileErr);
           }
@@ -431,23 +434,27 @@ export class BackgroundIndexer {
 
       if (this.currentScanId !== scanId) return;
 
-      if (instantDocs.length > 0) {
-        await DocStorageService.saveDocumentsBulk(instantDocs);
+      if (unpersistedBuffer.length > 0) {
+        await DocStorageService.saveDocumentsBulk(unpersistedBuffer);
+        unpersistedBuffer = [];
       }
 
       const totalElapsed = Math.max(1, performance.now() - startTime);
-      const finalSpeed = Math.round((instantDocs.length / (totalElapsed / 1000)));
+      const finalSpeed = Math.round((totalCount / (totalElapsed / 1000)));
 
       this.status.progressPercent = 100;
       this.status.docsPerSecond = finalSpeed;
       this.status.elapsedMs = Math.round(totalElapsed);
-      this.status.statusMessage = `인덱싱 완료! 총 ${instantDocs.length}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
+      this.status.statusMessage = `인덱싱 완료! 총 ${totalCount}개 실제 1페이지 썸네일 생성 (${(totalElapsed / 1000).toFixed(2)}초 소요, 초당 ${finalSpeed.toLocaleString()}개)`;
       this.notifyStatus(true);
     } catch (err) {
       console.error('Background indexer error:', err);
       this.status.statusMessage = '인덱싱 중 오류가 발생했습니다.';
     } finally {
       this.flushDocBatch();
+      if (unpersistedBuffer.length > 0) {
+        DocStorageService.saveDocumentsBulk(unpersistedBuffer).catch(console.warn);
+      }
       if (this.currentScanId === scanId) {
         this.status.isIndexing = false;
         this.notifyStatus(true);
