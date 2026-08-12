@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { Photo } from '../../types/photo';
-import { Star, Check, Edit3 } from 'lucide-react';
+import { Star, Check, Edit3, Zap } from 'lucide-react';
+import { PhotoLightningIndexer } from '../../services/photoLightningIndexer';
 
 interface PhotoCardProps {
   photo: Photo;
@@ -19,8 +20,42 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({
   onOpenLightbox,
   onOpenEditor,
 }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const isPlaceholder = photo.thumbnailUrl?.startsWith('data:image/svg+xml');
+  const hasPendingEnrich = PhotoLightningIndexer.hasPendingEnrichment(photo.id);
+
+  // Lazy real-image enrichment via IntersectionObserver: once a lightning-
+  // scanned placeholder card scrolls into view, read the real file and
+  // decode its actual thumbnail.
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || !hasPendingEnrich) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          const timer = setTimeout(() => {
+            PhotoLightningIndexer.enrichPhoto(photo.id);
+          }, 200);
+          return () => clearTimeout(timer);
+        }
+      },
+      { rootMargin: '300px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [photo.id, hasPendingEnrich]);
+
+  const handleMouseEnter = () => {
+    if (hasPendingEnrich) {
+      PhotoLightningIndexer.enrichPhoto(photo.id);
+    }
+  };
+
   return (
     <div
+      ref={cardRef}
       className={`photo-card ${isSelected ? 'selected' : ''}`}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -33,13 +68,36 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({
         e.stopPropagation();
         onOpenEditor(photo);
       }}
+      onMouseEnter={handleMouseEnter}
     >
       <img
         src={photo.thumbnailUrl || photo.url}
         alt={photo.title}
         className="photo-card-img"
         loading="lazy"
+        style={isPlaceholder ? { objectFit: 'contain', padding: 24, opacity: 0.6 } : undefined}
       />
+
+      {isPlaceholder && (
+        <div
+          title="Everything 초고속 모드 (스크롤/호버 시 실제 사진 자동 로딩)"
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 2,
+            background: 'rgba(251, 188, 5, 0.9)',
+            color: '#000000',
+            padding: '2px 4px',
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+          }}
+        >
+          <Zap size={10} fill="#000000" />
+        </div>
+      )}
 
       {/* Overlay controls */}
       <div className="photo-card-overlay">

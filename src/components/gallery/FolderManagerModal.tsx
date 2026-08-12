@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FolderScannerService, type ScanProgress } from '../../services/folderScanner';
+import { PhotoLightningIndexer } from '../../services/photoLightningIndexer';
 import { StorageService } from '../../services/storage';
 import { fileExplorerName, isWindows } from '../../utils/platform';
 import { isTauri } from '@tauri-apps/api/core';
@@ -60,7 +61,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
           title: `${fileExplorerName}에서 인덱싱할 사진 폴더 선택`,
         });
         if (selected && typeof selected === 'string') {
-          await FolderScannerService.scanLocalDirectoryNative(selected, (p) => {
+          await PhotoLightningIndexer.scanLocalDirectoryNative(selected, (p) => {
             setProgress(p);
             if (!p.isScanning) {
               setIsScanning(false);

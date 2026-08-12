@@ -20,6 +20,7 @@ import { FastDocIndex } from './services/fastDocIndex';
 import { ProgressiveDocWorker } from './services/progressiveDocWorker';
 import { BackgroundIndexer } from './services/backgroundIndexer';
 import { LightningIndexer } from './services/lightningIndexer';
+import { PhotoLightningIndexer } from './services/photoLightningIndexer';
 import { ElectronWatcherService } from './services/electronWatcher';
 import { TrayWatcherService } from './services/trayWatcher';
 
@@ -145,6 +146,20 @@ export const App: React.FC = () => {
       );
     });
 
+    // 4b. Live stream + lazy enrichment updates for native photo lightning scans
+    const unsubPhotoStream = PhotoLightningIndexer.subscribeStream((newPhoto) => {
+      setPhotos((prev) => {
+        const idx = prev.findIndex((p) => p.id === newPhoto.id);
+        if (idx !== -1) return prev;
+        return [newPhoto, ...prev];
+      });
+    });
+    const unsubPhotoEnrich = PhotoLightningIndexer.subscribeEnrichment((enrichedPhoto) => {
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === enrichedPhoto.id ? enrichedPhoto : p))
+      );
+    });
+
     // 5. Initialize Native Tauri OS Kernel Watcher & System Tray Sync
     TrayWatcherService.init();
     const unsubTray = TrayWatcherService.subscribe((change) => {
@@ -168,6 +183,8 @@ export const App: React.FC = () => {
       unsubWorker();
       unsubWatcher();
       unsubLightning();
+      unsubPhotoStream();
+      unsubPhotoEnrich();
       unsubTray();
     };
   }, [loadPhotoData, loadDocData]);
