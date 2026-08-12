@@ -75,10 +75,11 @@ export const MenuBar: React.FC<MenuBarProps> = ({
   }, []);
 
   const hasSelection = selectedCount > 0;
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
   const menus: MenuDef[] = [
     {
-      label: '파일(F)',
+      label: isMac ? '파일' : '파일(F)',
       entries: [
         {
           label: appMode === 'documents' ? '문서 폴더 스캔...' : '사진 폴더 스캔...',
@@ -90,7 +91,7 @@ export const MenuBar: React.FC<MenuBarProps> = ({
       ],
     },
     {
-      label: '편집(E)',
+      label: isMac ? '편집' : '편집(E)',
       entries: [
         {
           label: `선택 항목 삭제 (${selectedCount})`,
@@ -107,7 +108,7 @@ export const MenuBar: React.FC<MenuBarProps> = ({
       ],
     },
     {
-      label: '보기(V)',
+      label: isMac ? '보기' : '보기(V)',
       entries:
         appMode === 'photos'
           ? [
@@ -119,7 +120,7 @@ export const MenuBar: React.FC<MenuBarProps> = ({
           : [{ label: '(문서 모드에는 보기 전환이 없습니다)', disabled: true }],
     },
     {
-      label: '만들기(C)',
+      label: isMac ? '만들기' : '만들기(C)',
       entries:
         appMode === 'photos'
           ? [
@@ -135,7 +136,7 @@ export const MenuBar: React.FC<MenuBarProps> = ({
           : [{ label: '(문서 모드에는 만들기 메뉴가 없습니다)', disabled: true }],
     },
     {
-      label: '도구(T)',
+      label: isMac ? '도구' : '도구(T)',
       entries: [
         appMode === 'photos'
           ? { label: '슬라이드쇼 시작', onSelect: onStartSlideshow, disabled: !onStartSlideshow }
@@ -143,7 +144,7 @@ export const MenuBar: React.FC<MenuBarProps> = ({
       ],
     },
     {
-      label: '도움말(H)',
+      label: isMac ? '도움말' : '도움말(H)',
       entries: [
         {
           label: 'Picasa Web Studio 정보...',

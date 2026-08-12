@@ -11,9 +11,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "dev:tauri": "tauri dev",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:all": "npm run build && electron-builder -mw"
+    "build:mac": "npm run build && tauri build --bundles dmg,app",
+    "build:win": "npm run build && tauri build --bundles nsis,msi",
+    "build:all": "npm run build && tauri build"
   },
   "build": {
     "appId": "com.picasa.webstudio",

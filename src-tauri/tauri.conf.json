@@ -35,6 +35,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "category": "Photography",
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

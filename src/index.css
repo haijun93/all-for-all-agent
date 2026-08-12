@@ -42,9 +42,9 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.22);
   --shadow-picasa: 0 6px 20px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.3);
 
-  --font-sans: 'Segoe UI', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic', Roboto, sans-serif;
   --font-display: var(--font-sans);
-  --font-mono: 'Consolas', 'JetBrains Mono', monospace;
+  --font-mono: 'SF Mono', 'Menlo', 'Consolas', 'JetBrains Mono', monospace;
 
   --sidebar-width: 260px;
   --header-height: 64px;
