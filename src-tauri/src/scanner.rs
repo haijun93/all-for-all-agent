@@ -117,10 +117,16 @@ pub async fn scan_directory(
         None => DEFAULT_DOCUMENT_EXTENSIONS.iter().map(|s| s.to_string()).collect(),
     };
 
+    // Strip any `\\?\` extended-length prefix so downstream path strings
+    // (sent to the frontend, matched against watched-folder names, etc.)
+    // look like normal Windows paths. Pure string manipulation, no I/O —
+    // safe to call unconditionally, unlike metadata()/canonicalize().
+    let root = dunce::simplified(std::path::Path::new(&path));
+
     // Send a file batch every 50 files
     let mut batch: Vec<ScannedFile> = Vec::with_capacity(50);
 
-    for entry in WalkDir::new(&path)
+    for entry in WalkDir::new(root)
         .into_iter()
         .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
         .filter_map(|e| e.ok())
@@ -212,6 +218,10 @@ pub async fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub async fn open_file_with_default_app(path: String) -> Result<(), String> {
+    // Verbatim `\\?\`-prefixed paths can confuse `cmd /C start` on Windows;
+    // strip it (string-only, no I/O) before handing off to the shell.
+    let path = dunce::simplified(std::path::Path::new(&path)).to_string_lossy().to_string();
+
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")

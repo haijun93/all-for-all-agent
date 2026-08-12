@@ -29,6 +29,7 @@ pub fn run() {
       watcher::start_watching,
       watcher::stop_watching,
       indexer::extract_and_analyze,
+      indexer::extract_and_analyze_batch,
       photo::generate_photo_thumbnail,
       photo::generate_photo_full_res
     ])

@@ -316,26 +316,25 @@ export class BackgroundIndexer {
    * bypassing the WebView JS engine entirely for parsing/keyword analysis.
    * Used by both the deep-scan path and Lightning's native enrichment path.
    */
-  public static async createRealDocItemNative(
+  private static buildDocItemFromExtractResult(
     filePath: string,
     format: DocFormat,
     folderPath: string,
     fileSize: number,
-    modifiedMs: number
-  ): Promise<DocumentItem> {
-    const fileName = filePath.split(/[\\/]/).pop() || filePath;
-    const title = fileName.replace(/\.[^/.]+$/, '');
-    const dateStr = new Date(modifiedMs || Date.now()).toISOString().split('T')[0];
-    const docId = this.generateDocId(folderPath, fileName);
-
-    const result = await invoke<{
+    modifiedMs: number,
+    result: {
       text: string;
       page_count: number;
       cover_data_url: string | null;
       category: string;
       keywords: string[];
       snippet: string;
-    }>('extract_and_analyze', { path: filePath, format });
+    }
+  ): DocumentItem {
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const title = fileName.replace(/\.[^/.]+$/, '');
+    const dateStr = new Date(modifiedMs || Date.now()).toISOString().split('T')[0];
+    const docId = this.generateDocId(folderPath, fileName);
 
     const thumbnailUrl =
       result.cover_data_url ||
@@ -368,6 +367,69 @@ export class BackgroundIndexer {
       author: '로컬 사용자',
       company: '내 컴퓨터',
     };
+  }
+
+  public static async createRealDocItemNative(
+    filePath: string,
+    format: DocFormat,
+    folderPath: string,
+    fileSize: number,
+    modifiedMs: number
+  ): Promise<DocumentItem> {
+    const result = await invoke<{
+      text: string;
+      page_count: number;
+      cover_data_url: string | null;
+      category: string;
+      keywords: string[];
+      snippet: string;
+    }>('extract_and_analyze', { path: filePath, format });
+
+    return this.buildDocItemFromExtractResult(filePath, format, folderPath, fileSize, modifiedMs, result);
+  }
+
+  /**
+   * Parallel batch variant: parses+analyzes many files in one Rust command
+   * call, spread across all CPU cores via rayon instead of one core at a
+   * time — used by the deep scan's per-file loop, which previously issued
+   * one invoke() (and used one core) per file regardless of how many were
+   * queued.
+   */
+  public static async createRealDocItemsBatchNative(
+    items: Array<{ path: string; format: DocFormat; folderPath: string; size: number; modified: number }>
+  ): Promise<DocumentItem[]> {
+    if (items.length === 0) return [];
+
+    const batchResults = await invoke<
+      Array<{
+        path: string;
+        result: {
+          text: string;
+          page_count: number;
+          cover_data_url: string | null;
+          category: string;
+          keywords: string[];
+          snippet: string;
+        };
+      }>
+    >('extract_and_analyze_batch', {
+      items: items.map((i) => ({ path: i.path, format: i.format })),
+    });
+
+    const resultByPath = new Map(batchResults.map((r) => [r.path, r.result]));
+
+    return items
+      .filter((item) => resultByPath.has(item.path))
+      .map((item) =>
+        this.buildDocItemFromExtractResult(
+          item.path,
+          item.format,
+          item.folderPath,
+          item.size,
+          item.modified,
+          resultByPath.get(item.path)!
+        )
+      );
   }
 
   /**
@@ -439,6 +501,70 @@ export class BackgroundIndexer {
     let newCount = 0;
     let unpersistedBuffer: DocumentItem[] = [];
 
+    // Parallel extraction across CPU cores (rayon, on the Rust side) instead
+    // of one invoke() — and one core — per file: files needing real
+    // extraction are queued and flushed in small batches, while cached
+    // files still stream immediately since they need no extraction at all.
+    const EXTRACTION_BATCH_SIZE = 12;
+    let pending: Array<{
+      path: string;
+      format: DocFormat;
+      folderPath: string;
+      size: number;
+      modified: number;
+      docId: string;
+      name: string;
+    }> = [];
+
+    const flushPendingBatch = async () => {
+      if (pending.length === 0) return;
+      const batch = pending;
+      pending = [];
+
+      try {
+        const docs = await this.createRealDocItemsBatchNative(batch);
+        const docByPath = new Map(docs.map((d) => [d.filePath, d]));
+
+        for (const meta of batch) {
+          const doc = docByPath.get(meta.path);
+          if (!doc) {
+            console.warn('[BackgroundIndexer] Batch extraction missing result for:', meta.name);
+            continue;
+          }
+          doc.id = meta.docId;
+
+          newCount++;
+          unpersistedBuffer.push(doc);
+          FastDocIndex.addDocument(doc);
+          this.enqueueDocStream(doc);
+        }
+      } catch (batchErr) {
+        console.warn('[BackgroundIndexer] Batch extraction failed:', batchErr);
+      }
+
+      if (unpersistedBuffer.length >= 10) {
+        const chunk = [...unpersistedBuffer];
+        unpersistedBuffer = [];
+        await DocStorageService.saveDocumentsBulk(chunk);
+      }
+
+      const elapsed = Math.max(1, performance.now() - startTime);
+      const speed = Math.round(processedCount / (elapsed / 1000));
+      const percent = totalFiles > 0 ? Math.round((processedCount / totalFiles) * 100) : 0;
+
+      this.updateStatus({
+        currentFileName: `📄 [${processedCount}/${totalFiles}] 병렬 처리 중...`,
+        scannedCount: processedCount,
+        progressPercent: percent,
+        docsPerSecond: speed,
+        elapsedMs: Math.round(elapsed),
+        statusMessage: `📄 1페이지 정밀 색인 중: ${processedCount}/${totalFiles} (신규 ${newCount}, 캐시 ${skippedCount})`,
+      }, false);
+
+      // Yield UI thread between batches
+      await new Promise((r) => setTimeout(r, 4));
+    };
+
     for (const fileItem of allFiles) {
       if (this.currentScanId !== scanId) return;
       await ScanControlService.waitWhilePaused();
@@ -458,51 +584,22 @@ export class BackgroundIndexer {
           this.enqueueDocStream(cachedDoc);
         }
       } else {
-        // Full extraction natively in Rust — no bytes cross the IPC bridge,
-        // no WebView JS engine involved.
-        try {
-          const folderStr = fileItem.path.substring(0, fileItem.path.length - fileItem.name.length);
-          const format = this.inferFormat(fileItem.name);
-          const doc = await this.createRealDocItemNative(
-            fileItem.path,
-            format,
-            folderStr,
-            fileItem.size,
-            fileItem.modified
-          );
-          doc.id = docId;
-
-          newCount++;
-          unpersistedBuffer.push(doc);
-          FastDocIndex.addDocument(doc);
-          this.enqueueDocStream(doc);
-
-          if (unpersistedBuffer.length >= 10) {
-            const chunk = [...unpersistedBuffer];
-            unpersistedBuffer = [];
-            await DocStorageService.saveDocumentsBulk(chunk);
-          }
-        } catch (readErr) {
-          console.warn('[BackgroundIndexer] Extraction failed for:', fileItem.name, readErr);
+        const folderStr = fileItem.path.substring(0, fileItem.path.length - fileItem.name.length);
+        pending.push({
+          path: fileItem.path,
+          format: this.inferFormat(fileItem.name),
+          folderPath: folderStr,
+          size: fileItem.size,
+          modified: fileItem.modified,
+          docId,
+          name: fileItem.name,
+        });
+        if (pending.length >= EXTRACTION_BATCH_SIZE) {
+          await flushPendingBatch();
         }
       }
-
-      const elapsed = Math.max(1, performance.now() - startTime);
-      const speed = Math.round(processedCount / (elapsed / 1000));
-      const percent = totalFiles > 0 ? Math.round((processedCount / totalFiles) * 100) : 0;
-
-      this.updateStatus({
-        currentFileName: `📄 [${processedCount}/${totalFiles}] ${fileItem.name}`,
-        scannedCount: processedCount,
-        progressPercent: percent,
-        docsPerSecond: speed,
-        elapsedMs: Math.round(elapsed),
-        statusMessage: `📄 1페이지 정밀 색인 중: ${processedCount}/${totalFiles} (신규 ${newCount}, 캐시 ${skippedCount})`,
-      }, false);
-
-      // Yield UI thread between extractions
-      await new Promise((r) => setTimeout(r, 4));
     }
+    await flushPendingBatch();
 
     this.flushDocBatch();
     if (unpersistedBuffer.length > 0) {

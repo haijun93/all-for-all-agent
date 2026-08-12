@@ -336,30 +336,201 @@ fn extract_hwpx(path: &str) -> Option<ExtractedDoc> {
 // 5. HWP 5.0 binary — scan for an embedded PNG preview in the first 512KB
 // ---------------------------------------------------------------------------
 
+// HWPTAG_PARA_TEXT — the record tag that carries a paragraph's actual
+// UTF-16LE text content, per the published HWP5 binary spec.
+const HWPTAG_PARA_TEXT: u32 = 67;
+
+/// Decodes one PARA_TEXT record's payload into visible text. HWP5 inlines
+/// non-text "control characters" (tables, footnotes, page breaks, etc.) as
+/// UTF-16 code points below 32, each followed by a fixed 7-unit block of
+/// associated metadata that isn't text and must be skipped over — best
+/// effort here (skip the whole 8-unit block) since this is for search
+/// indexing, not layout-accurate rendering.
+fn decode_para_text(payload: &[u8]) -> String {
+    let units: Vec<u16> = payload
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+
+    let mut kept: Vec<u16> = Vec::with_capacity(units.len());
+    let mut i = 0;
+    while i < units.len() {
+        let code = units[i];
+        if code == 10 || code == 13 {
+            kept.push(b'\n' as u16);
+            i += 1;
+        } else if code == 9 {
+            kept.push(b' ' as u16);
+            i += 1;
+        } else if code < 32 {
+            // Control char block: itself + 7 metadata units.
+            i += 8;
+        } else {
+            kept.push(code);
+            i += 1;
+        }
+    }
+
+    String::from_utf16_lossy(&kept)
+}
+
+/// Parses a decompressed BodyText section stream into its paragraph text,
+/// walking the record stream (tag/level/size header, optionally extended
+/// size) and decoding only HWPTAG_PARA_TEXT records.
+fn parse_hwp_section_records(data: &[u8]) -> String {
+    let mut out = String::new();
+    let mut pos = 0usize;
+    while pos + 4 <= data.len() {
+        let header = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let tag_id = header & 0x3FF;
+        let mut size = (header >> 20) & 0xFFF;
+        if size == 0xFFF {
+            if pos + 4 > data.len() {
+                break;
+            }
+            size = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+            pos += 4;
+        }
+        let size = size as usize;
+        if pos + size > data.len() {
+            break;
+        }
+        if tag_id == HWPTAG_PARA_TEXT {
+            let text = decode_para_text(&data[pos..pos + size]);
+            if !text.trim().is_empty() {
+                out.push_str(text.trim());
+                out.push('\n');
+            }
+        }
+        pos += size;
+    }
+    out
+}
+
+/// HWP5 (.hwp, the binary/OLE2-compound-file format used since 2002) text
+/// extraction: opens the CFB container, decompresses each BodyText/SectionN
+/// stream (raw DEFLATE, per the compressed-document flag in FileHeader),
+/// and decodes paragraph text from the record stream. Falls back to a
+/// placeholder if the file isn't a well-formed HWP5 container (e.g. the
+/// much rarer pre-2002 HWP3 format, which uses a different binary layout
+/// entirely and isn't handled here).
 fn extract_hwp(path: &str) -> Option<ExtractedDoc> {
+    let file = File::open(path).ok()?;
+    let cover_data_url = find_embedded_png_cover(path);
+
+    let mut comp = match cfb::CompoundFile::open(file) {
+        Ok(c) => c,
+        Err(_) => {
+            return Some(ExtractedDoc {
+                text: "한글 문서".to_string(),
+                page_count: 1,
+                cover_data_url,
+            });
+        }
+    };
+
+    let compressed = read_hwp_compressed_flag(&mut comp).unwrap_or(true);
+
+    let mut section_names: Vec<String> = comp
+        .read_storage("/BodyText")
+        .map(|entries| {
+            entries
+                .filter(|e| e.is_stream())
+                .map(|e| e.name().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    section_names.sort_by_key(|name| {
+        name.trim_start_matches("Section")
+            .parse::<u32>()
+            .unwrap_or(u32::MAX)
+    });
+
+    if section_names.is_empty() {
+        return Some(ExtractedDoc {
+            text: "한글 문서".to_string(),
+            page_count: 1,
+            cover_data_url,
+        });
+    }
+
+    let mut full_text = String::new();
+    let mut section_count = 0u32;
+
+    for name in &section_names {
+        let stream_path = format!("/BodyText/{name}");
+        let mut stream = match comp.open_stream(&stream_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let mut raw = Vec::new();
+        if stream.read_to_end(&mut raw).is_err() {
+            continue;
+        }
+
+        let decompressed = if compressed {
+            let mut decoder = flate2::read::DeflateDecoder::new(&raw[..]);
+            let mut buf = Vec::new();
+            if decoder.read_to_end(&mut buf).is_err() {
+                continue;
+            }
+            buf
+        } else {
+            raw
+        };
+
+        full_text.push_str(&parse_hwp_section_records(&decompressed));
+        section_count += 1;
+    }
+
+    if full_text.trim().is_empty() {
+        return Some(ExtractedDoc {
+            text: "한글 문서".to_string(),
+            page_count: 1,
+            cover_data_url,
+        });
+    }
+
+    Some(ExtractedDoc {
+        text: truncate_chars(full_text.trim(), 500),
+        page_count: section_count.max(1),
+        cover_data_url,
+    })
+}
+
+/// Reads FileHeader's property flags (offset 36, little-endian u32) to
+/// check bit 0 — whether BodyText streams are DEFLATE-compressed. True for
+/// essentially every real-world HWP5 file; defaulting to `true` on any
+/// read failure matches that overwhelming common case.
+fn read_hwp_compressed_flag<F: std::io::Read + std::io::Seek>(
+    comp: &mut cfb::CompoundFile<F>,
+) -> Option<bool> {
+    let mut stream = comp.open_stream("/FileHeader").ok()?;
+    let mut header = Vec::new();
+    stream.read_to_end(&mut header).ok()?;
+    if header.len() < 40 {
+        return None;
+    }
+    let flags = u32::from_le_bytes([header[36], header[37], header[38], header[39]]);
+    Some(flags & 0x1 != 0)
+}
+
+/// Best-effort embedded cover thumbnail: scans the first chunk of the raw
+/// file for a PNG signature. Cheap and works for the common case where an
+/// uncompressed embedded image happens to be byte-contiguous; not a
+/// substitute for parsing the BinData storage, which HWP5 also compresses
+/// per-stream like BodyText.
+fn find_embedded_png_cover(path: &str) -> Option<String> {
     let mut file = File::open(path).ok()?;
     let mut head = vec![0u8; 512 * 1024];
     let n = file.read(&mut head).ok()?;
     head.truncate(n);
 
-    let png_start = head
-        .windows(4)
-        .position(|w| w == [0x89, 0x50, 0x4E, 0x47]);
-
-    if let Some(start) = png_start {
-        let cover = &head[start..];
-        return Some(ExtractedDoc {
-            text: "한글 HWP 문서".to_string(),
-            page_count: 1,
-            cover_data_url: Some(format!("data:image/png;base64,{}", BASE64.encode(cover))),
-        });
-    }
-
-    Some(ExtractedDoc {
-        text: "한글 문서".to_string(),
-        page_count: 1,
-        cover_data_url: None,
-    })
+    let png_start = head.windows(4).position(|w| w == [0x89, 0x50, 0x4E, 0x47])?;
+    let cover = &head[png_start..];
+    Some(format!("data:image/png;base64,{}", BASE64.encode(cover)))
 }
 
 // ---------------------------------------------------------------------------
@@ -807,12 +978,45 @@ fn extract_comic_zip(path: &str) -> Option<ExtractedDoc> {
 
 fn extract_plain_text(path: &str) -> Option<ExtractedDoc> {
     let bytes = read_bytes(path).ok()?;
-    let text = String::from_utf8_lossy(&bytes).to_string();
+    let text = decode_text_bytes(&bytes);
     Some(ExtractedDoc {
         text: truncate_chars(&text, 500),
         page_count: 1,
         cover_data_url: None,
     })
+}
+
+/// Decodes file bytes to a String, auto-detecting the common encodings for
+/// Korean text files: UTF-8/UTF-16 (via BOM when present), and legacy
+/// EUC-KR/CP949 for BOM-less files. Many older Korean .txt files predate
+/// UTF-8 adoption; naively assuming UTF-8 (the previous behavior) turns
+/// those into a wall of U+FFFD replacement characters, destroying the text
+/// for both preview and keyword search.
+fn decode_text_bytes(bytes: &[u8]) -> String {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(rest).to_string();
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return encoding_rs::UTF_16LE.decode(rest).0.to_string();
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return encoding_rs::UTF_16BE.decode(rest).0.to_string();
+    }
+
+    // No BOM: valid UTF-8 is trusted outright (the overwhelmingly common
+    // case for anything created or saved in the last ~15 years).
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+
+    // Not valid UTF-8 — try legacy Korean encoding before giving up to a
+    // lossy UTF-8 decode (which would just be replacement-character noise
+    // for a genuinely EUC-KR/CP949 file).
+    let (text, _, had_errors) = encoding_rs::EUC_KR.decode(bytes);
+    if had_errors {
+        return String::from_utf8_lossy(bytes).to_string();
+    }
+    text.to_string()
 }
 
 #[cfg(test)]
@@ -835,6 +1039,19 @@ mod tests {
         assert_eq!(doc.text, "안녕하세요 테스트 문서입니다");
         assert_eq!(doc.page_count, 1);
         assert!(doc.cover_data_url.is_none());
+    }
+
+    #[test]
+    fn decodes_legacy_euc_kr_text_files() {
+        let original = "옛날 방식으로 저장된 한글 문서";
+        let (encoded, _, had_errors) = encoding_rs::EUC_KR.encode(original);
+        assert!(!had_errors, "test string must be fully EUC-KR representable");
+
+        let path = tmp_path("legacy_euckr.txt");
+        std::fs::write(&path, &encoded).unwrap();
+
+        let doc = extract(&path, "txt");
+        assert_eq!(doc.text, original);
     }
 
     #[test]
@@ -902,5 +1119,63 @@ mod tests {
         assert_eq!(resolve_zip_path("OEBPS/", "../images/cover.jpg"), "images/cover.jpg");
         assert_eq!(resolve_zip_path("OEBPS/", "images/cover.jpg"), "OEBPS/images/cover.jpg");
         assert_eq!(resolve_zip_path("OEBPS/", "/root/cover.jpg"), "root/cover.jpg");
+    }
+
+    fn utf16le_bytes(s: &str) -> Vec<u8> {
+        s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect()
+    }
+
+    fn hwp_para_text_record(text: &str) -> Vec<u8> {
+        let payload = utf16le_bytes(text);
+        let size = payload.len() as u32;
+        assert!(size < 0xFFF, "test payload too large for a short record");
+        let header = (size << 20) | HWPTAG_PARA_TEXT;
+        let mut record = header.to_le_bytes().to_vec();
+        record.extend_from_slice(&payload);
+        record
+    }
+
+    #[test]
+    fn decode_para_text_skips_inline_control_blocks() {
+        // 'A' (0x0041), an 8-unit inline control block (control char 0x01 + 7
+        // metadata units), then 'B' (0x0042) — only A and B should survive.
+        let mut units: Vec<u16> = vec![0x0041];
+        units.push(0x0001);
+        units.extend(std::iter::repeat(0u16).take(7));
+        units.push(0x0042);
+        let bytes: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(decode_para_text(&bytes), "AB");
+    }
+
+    #[test]
+    fn extracts_hwp5_paragraph_text_from_synthetic_cfb() {
+        let mut file_header = vec![0u8; 256];
+        file_header[36] = 0x01; // bit 0: BodyText streams are DEFLATE-compressed
+
+        let mut section_records = Vec::new();
+        section_records.extend(hwp_para_text_record("안녕하세요"));
+        section_records.extend(hwp_para_text_record("두 번째 문단"));
+
+        let mut compressed = Vec::new();
+        {
+            let mut encoder =
+                flate2::write::DeflateEncoder::new(&mut compressed, flate2::Compression::default());
+            encoder.write_all(&section_records).unwrap();
+            encoder.finish().unwrap();
+        }
+
+        let cursor = std::io::Cursor::new(Vec::<u8>::new());
+        let mut comp = cfb::CompoundFile::create(cursor).unwrap();
+        comp.create_stream("/FileHeader").unwrap().write_all(&file_header).unwrap();
+        comp.create_storage("/BodyText").unwrap();
+        comp.create_stream("/BodyText/Section0").unwrap().write_all(&compressed).unwrap();
+        let cursor = comp.into_inner();
+
+        let path = tmp_path("synthetic.hwp");
+        std::fs::write(&path, cursor.into_inner()).unwrap();
+
+        let doc = extract_hwp(&path).expect("extract_hwp should succeed on a well-formed CFB");
+        assert!(doc.text.contains("안녕하세요"), "got: {}", doc.text);
+        assert!(doc.text.contains("두 번째 문단"), "got: {}", doc.text);
     }
 }
