@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FolderScannerService, type ScanProgress } from '../../services/folderScanner';
 import { StorageService } from '../../services/storage';
 import { fileExplorerName, isWindows } from '../../utils/platform';
+import { isTauri } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   FolderSearch,
   HardDrive,
@@ -48,7 +50,30 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
     setErrorMessage(null);
     setIsScanning(true);
     try {
-      if ('showDirectoryPicker' in window) {
+      if (isTauri()) {
+        // Real OS folder picker + Rust filesystem access — no Chromium
+        // "blocked system folder" restriction, since this never touches
+        // the browser's File System Access API.
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: `${fileExplorerName}에서 인덱싱할 사진 폴더 선택`,
+        });
+        if (selected && typeof selected === 'string') {
+          await FolderScannerService.scanLocalDirectoryNative(selected, (p) => {
+            setProgress(p);
+            if (!p.isScanning) {
+              setIsScanning(false);
+              if (!watchedFolders.includes(p.currentFolder)) {
+                setWatchedFolders((prev) => [...prev, p.currentFolder]);
+              }
+              onScanComplete();
+            }
+          });
+        } else {
+          setIsScanning(false);
+        }
+      } else if ('showDirectoryPicker' in window) {
         await FolderScannerService.scanLocalDirectoryPicker((p) => {
           setProgress(p);
           if (!p.isScanning) {
@@ -64,7 +89,11 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        setErrorMessage('폴더 접근 권한이 취소되었거나 지원되지 않습니다. 아래 폴더 선택 버튼을 이용해 주세요.');
+        setErrorMessage(
+          isTauri()
+            ? '폴더를 스캔하는 중 오류가 발생했습니다: ' + (err?.message || err)
+            : '폴더 접근 권한이 취소되었거나 지원되지 않습니다. 아래 폴더 선택 버튼을 이용해 주세요.'
+        );
       }
       setIsScanning(false);
       setProgress((prev) => (prev ? { ...prev, isScanning: false } : prev));

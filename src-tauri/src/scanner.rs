@@ -18,11 +18,24 @@ struct ScannedFile {
     modified: i64,
 }
 
+const DEFAULT_DOCUMENT_EXTENSIONS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "hwp", "hwpx", "epub", "zip", "cbz", "ppt", "pptx", "txt",
+];
+
 #[tauri::command]
-pub async fn scan_directory(app: AppHandle, path: String) -> Result<usize, String> {
+pub async fn scan_directory(
+    app: AppHandle,
+    path: String,
+    extensions: Option<Vec<String>>,
+) -> Result<usize, String> {
     let start = Instant::now();
     let mut total_count = 0;
-    
+
+    let allowed_extensions: Vec<String> = match extensions {
+        Some(exts) => exts.into_iter().map(|e| e.to_lowercase()).collect(),
+        None => DEFAULT_DOCUMENT_EXTENSIONS.iter().map(|s| s.to_string()).collect(),
+    };
+
     // Send a file batch every 50 files
     let mut batch: Vec<ScannedFile> = Vec::with_capacity(50);
 
@@ -33,21 +46,11 @@ pub async fn scan_directory(app: AppHandle, path: String) -> Result<usize, Strin
 
         let name = entry.file_name().to_string_lossy().to_string();
         let name_lower = name.to_lowercase();
-        
-        // Filter out unwanted files
-        if !name_lower.ends_with(".pdf") && 
-           !name_lower.ends_with(".doc") &&
-           !name_lower.ends_with(".docx") &&
-           !name_lower.ends_with(".xls") &&
-           !name_lower.ends_with(".xlsx") &&
-           !name_lower.ends_with(".hwp") &&
-           !name_lower.ends_with(".hwpx") &&
-           !name_lower.ends_with(".epub") &&
-           !name_lower.ends_with(".zip") &&
-           !name_lower.ends_with(".cbz") &&
-           !name_lower.ends_with(".ppt") &&
-           !name_lower.ends_with(".pptx") &&
-           !name_lower.ends_with(".txt") {
+
+        let matches_extension = allowed_extensions
+            .iter()
+            .any(|ext| name_lower.ends_with(&format!(".{ext}")));
+        if !matches_extension {
             continue;
         }
 
