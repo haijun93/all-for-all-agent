@@ -139,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="search-input"
             placeholder={
               appMode === 'documents'
-                ? "문서 제목, 본문 내용, 키워드(#사업계획서, #계약서), 포맷 검색..."
+                ? "문서 제목, 파일명, 폴더, 포맷 검색..."
                 : "사진 제목, 태그, 인물, 폴더, 장소 검색..."
             }
             value={searchQuery}

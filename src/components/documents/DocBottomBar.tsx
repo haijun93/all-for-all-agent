@@ -9,8 +9,6 @@ import {
   ZoomOut,
   FolderTree,
   Calendar,
-  FileCheck,
-  Hash,
   Layers
 } from 'lucide-react';
 
@@ -79,31 +77,13 @@ export const DocBottomBar: React.FC<DocBottomBarProps> = ({
         <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>정렬:</span>
         <div style={{ display: 'flex', background: '#131822', padding: 2, borderRadius: 6, gap: 2 }}>
           <button
-            className={`btn btn-sm ${groupBy === 'category' ? 'btn-primary' : 'btn-ghost'}`}
+            className={`btn btn-sm ${groupBy === 'folder' ? 'btn-primary' : 'btn-ghost'}`}
             style={{ padding: '3px 8px', fontSize: '0.74rem' }}
-            onClick={() => onGroupByChange('category')}
-            title="문서 주제별 분류"
+            onClick={() => onGroupByChange('folder')}
+            title="폴더별 그룹화"
           >
-            <FileCheck size={12} />
-            <span>주제별</span>
-          </button>
-          <button
-            className={`btn btn-sm ${groupBy === 'keyword' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
-            onClick={() => onGroupByChange('keyword')}
-            title="핵심 키워드별 그룹화"
-          >
-            <Hash size={12} />
-            <span>키워드별</span>
-          </button>
-          <button
-            className={`btn btn-sm ${groupBy === 'date' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
-            onClick={() => onGroupByChange('date')}
-            title="작성일자별 그룹화"
-          >
-            <Calendar size={12} />
-            <span>작성일별</span>
+            <FolderTree size={12} />
+            <span>폴더별</span>
           </button>
           <button
             className={`btn btn-sm ${groupBy === 'format' ? 'btn-primary' : 'btn-ghost'}`}
@@ -115,13 +95,13 @@ export const DocBottomBar: React.FC<DocBottomBarProps> = ({
             <span>포맷별</span>
           </button>
           <button
-            className={`btn btn-sm ${groupBy === 'folder' ? 'btn-primary' : 'btn-ghost'}`}
+            className={`btn btn-sm ${groupBy === 'date' ? 'btn-primary' : 'btn-ghost'}`}
             style={{ padding: '3px 8px', fontSize: '0.74rem' }}
-            onClick={() => onGroupByChange('folder')}
-            title="폴더별 그룹화"
+            onClick={() => onGroupByChange('date')}
+            title="작성일자별 그룹화"
           >
-            <FolderTree size={12} />
-            <span>폴더별</span>
+            <Calendar size={12} />
+            <span>작성일별</span>
           </button>
         </div>
       </div>

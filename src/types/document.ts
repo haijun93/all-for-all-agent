@@ -21,7 +21,7 @@ export interface DocumentItem {
   company?: string;
 }
 
-export type DocGroupBy = 'keyword' | 'date' | 'format' | 'category' | 'folder';
+export type DocGroupBy = 'folder' | 'format' | 'date';
 
 // Simplified, user-facing format buckets for the sidebar filter — collapses
 // the many real extensions the scanner indexes (docx, pptx, txt, zip, ...)

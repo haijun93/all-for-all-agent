@@ -196,32 +196,24 @@ export const DocCard = React.memo<DocCardProps>(({
           {doc.title}
         </span>
 
-        {/* Category & Date */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: '0.68rem', color: 'var(--accent-blue)', fontWeight: 500 }}>
-            {doc.category.split(' ')[1] || doc.category}
+        {/* Folder & Date */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span
+            style={{
+              fontSize: '0.68rem',
+              color: 'var(--text-secondary)',
+              maxWidth: '65%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={doc.folder || '기본 폴더'}
+          >
+            📁 {doc.folder ? doc.folder.split(/[\/\\]/).pop() : '기본 폴더'}
           </span>
           <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
             {doc.dateCreated}
           </span>
-        </div>
-
-        {/* Extracted Keywords Chips */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, overflow: 'hidden', height: 18 }}>
-          {doc.keywords.slice(0, 3).map((kw) => (
-            <span
-              key={kw}
-              style={{
-                fontSize: '0.62rem',
-                background: 'rgba(255, 255, 255, 0.06)',
-                padding: '1px 4px',
-                borderRadius: 3,
-                color: 'var(--text-secondary)',
-              }}
-            >
-              #{kw}
-            </span>
-          ))}
         </div>
       </div>
     </div>

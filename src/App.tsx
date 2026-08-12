@@ -46,7 +46,7 @@ export const App: React.FC = () => {
   // Document State
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [docThumbSize, setDocThumbSize] = useState<number>(240);
-  const [docGroupBy, setDocGroupBy] = useState<DocGroupBy>('category');
+  const [docGroupBy, setDocGroupBy] = useState<DocGroupBy>('folder');
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [lightboxDoc, setLightboxDoc] = useState<DocumentItem | null>(null);
   const [isDocFolderManagerOpen, setIsDocFolderManagerOpen] = useState(false);
@@ -200,18 +200,6 @@ export const App: React.FC = () => {
   };
 
   // --- Derived Document Metadata ---
-  const docCategories = useMemo(() => {
-    const set = new Set<string>();
-    documents.forEach((d) => d.category && set.add(d.category));
-    return Array.from(set);
-  }, [documents]);
-
-  const docKeywords = useMemo(() => {
-    const set = new Set<string>();
-    documents.forEach((d) => d.keywords?.forEach((k) => set.add(k)));
-    return Array.from(set).slice(0, 16);
-  }, [documents]);
-
   const docDates = useMemo(() => {
     const set = new Set<string>();
     documents.forEach((d) => {
@@ -249,21 +237,19 @@ export const App: React.FC = () => {
       ? FastDocIndex.search(searchQuery, documents)
       : documents;
 
-    // 2. Category & Metadata Filters
+    // 2. Folder, Format & Date Filters
     return baseDocs.filter((doc) => {
       if (activeCategory === 'starred') return doc.isStarred;
-      if (activeCategory === 'category' && selectedCategoryId) return doc.category === selectedCategoryId;
-      if (activeCategory === 'keyword' && selectedCategoryId) return doc.keywords?.includes(selectedCategoryId);
       if (activeCategory === 'format' && selectedCategoryId) return getDocFormatGroup(doc.format) === selectedCategoryId;
       if (activeCategory === 'folder' && selectedCategoryId) return doc.folder === selectedCategoryId;
       if (activeCategory === 'date' && selectedCategoryId) {
         const parts = doc.dateCreated.split('-');
-        return `${parts[0]}년 ${parseInt(parts[1], 10)}월` === selectedCategoryId;
+        const dateKey = parts.length >= 2 ? `${parts[0]}년 ${parseInt(parts[1], 10)}월` : doc.dateCreated;
+        return dateKey === selectedCategoryId;
       }
-
       return true;
     });
-  }, [documents, activeCategory, selectedCategoryId, searchQuery]);
+  }, [documents, searchQuery, activeCategory, selectedCategoryId]);
 
   // Document Selection Handlers
   const handleToggleSelectDoc = (id: string, e: React.MouseEvent) => {
@@ -560,8 +546,6 @@ export const App: React.FC = () => {
               setActiveCategory(cat);
               setSelectedCategoryId(id);
             }}
-            categories={docCategories}
-            keywords={docKeywords}
             dates={docDates}
             formatGroupCounts={docFormatGroupCounts}
             folders={docFolders}

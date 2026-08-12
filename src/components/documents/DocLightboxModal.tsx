@@ -224,31 +224,6 @@ export const DocLightboxModal: React.FC<DocLightboxModalProps> = ({
               </button>
             </div>
 
-            {/* Keyword tags */}
-            <div>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                AI 분석 핵심 키워드 (Keywords):
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {doc.keywords.map((kw) => (
-                  <span
-                    key={kw}
-                    style={{
-                      fontSize: '0.74rem',
-                      background: 'rgba(66, 133, 244, 0.15)',
-                      border: '1px solid rgba(66, 133, 244, 0.3)',
-                      color: '#60a5fa',
-                      padding: '3px 8px',
-                      borderRadius: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    #{kw}
-                  </span>
-                ))}
-              </div>
-            </div>
-
             {/* Extracted Text Content Box */}
             <div
               style={{

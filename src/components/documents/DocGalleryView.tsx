@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { DocumentItem, DocGroupBy } from '../../types/document';
 import { DocCard } from './DocCard';
-import { FileText, Calendar, CheckSquare, Layers, Folder, Hash } from 'lucide-react';
+import { FileText, Calendar, CheckSquare, Layers, Folder } from 'lucide-react';
 
 interface DocGalleryViewProps {
   docs: DocumentItem[];
@@ -69,20 +69,16 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
     const groups: { [key: string]: DocumentItem[] } = {};
 
     visibleDocs.forEach((doc) => {
-      let key = '기타 문서';
-      if (groupBy === 'category') {
-        key = doc.category || '일반 문서';
+      let key = '기타 폴더';
+      if (groupBy === 'folder') {
+        key = doc.folder || '기본 폴더';
+      } else if (groupBy === 'format') {
+        key = `${doc.format.toUpperCase()} 문서 파일`;
       } else if (groupBy === 'date') {
         if (doc.dateCreated) {
           const parts = doc.dateCreated.split('-');
           key = parts.length >= 2 ? `${parts[0]}년 ${parseInt(parts[1], 10)}월` : doc.dateCreated;
         }
-      } else if (groupBy === 'format') {
-        key = `${doc.format.toUpperCase()} 문서 파일`;
-      } else if (groupBy === 'folder') {
-        key = doc.folder || '기본 폴더';
-      } else if (groupBy === 'keyword') {
-        key = doc.keywords[0] ? `#${doc.keywords[0]} 관련 문서` : '기타 키워드';
       }
 
       if (!groups[key]) groups[key] = [];
@@ -139,16 +135,12 @@ export const DocGalleryView: React.FC<DocGalleryViewProps> = ({
           >
             <div className="gallery-group-header">
               <div className="gallery-group-title">
-                {groupBy === 'category' ? (
-                  <FileText size={18} color="#34a853" />
-                ) : groupBy === 'date' ? (
-                  <Calendar size={18} color="#4285f4" />
+                {groupBy === 'folder' ? (
+                  <Folder size={18} color="#fbbc05" />
                 ) : groupBy === 'format' ? (
                   <Layers size={18} color="#ea4335" />
-                ) : groupBy === 'folder' ? (
-                  <Folder size={18} color="#fbbc05" />
                 ) : (
-                  <Hash size={18} color="#a855f7" />
+                  <Calendar size={18} color="#4285f4" />
                 )}
                 <span>{group.title}</span>
                 <span className="gallery-group-count">({group.docs.length}개)</span>

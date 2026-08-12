@@ -8,17 +8,13 @@ import {
   ChevronDown,
   ChevronRight,
   Calendar,
-  Layers,
-  FileCheck,
-  Hash
+  Layers
 } from 'lucide-react';
 
 interface DocSidebarProps {
   activeCategory: string;
   selectedId: string | null;
   onSelectCategory: (category: string, id: string | null) => void;
-  categories: string[];
-  keywords: string[];
   dates: string[];
   formatGroupCounts: Record<DocFormatGroup, number>;
   folders: string[];
@@ -35,8 +31,6 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
   activeCategory,
   selectedId,
   onSelectCategory,
-  categories,
-  keywords,
   dates,
   formatGroupCounts,
   folders,
@@ -44,11 +38,9 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
   starredCount,
 }) => {
   const [openSections, setOpenSections] = useState({
-    categories: true,
-    keywords: true,
-    dates: true,
+    folders: true,
     formats: true,
-    folders: false,
+    dates: true,
   });
 
   const toggleSection = (key: keyof typeof openSections) => {
@@ -152,75 +144,6 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
             <span className="sidebar-badge">{starredCount}</span>
           </li>
         </ul>
-      </div>
-
-      {/* Document Categories Section */}
-      <div>
-        <div
-          className="sidebar-section-title"
-          style={{ cursor: 'pointer' }}
-          onClick={() => toggleSection('categories')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {openSections.categories ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <span>📂 문서 주제별 분류</span>
-          </div>
-          <span style={{ fontSize: '0.7rem' }}>{categories.length}</span>
-        </div>
-
-        {openSections.categories && (
-          <ul className="sidebar-nav-list">
-            {categories.map((cat) => {
-              const isActive = activeCategory === 'category' && selectedId === cat;
-              return (
-                <li
-                  key={cat}
-                  className={`sidebar-item ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectCategory('category', cat)}
-                >
-                  <div className="sidebar-item-left">
-                    <FileCheck size={14} color="#34a853" />
-                    <span>{cat}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      {/* Extracted Key Keywords Cloud */}
-      <div>
-        <div
-          className="sidebar-section-title"
-          style={{ cursor: 'pointer' }}
-          onClick={() => toggleSection('keywords')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {openSections.keywords ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <span>🏷️ 핵심 키워드 (Keywords)</span>
-          </div>
-          <span style={{ fontSize: '0.7rem' }}>{keywords.length}</span>
-        </div>
-
-        {openSections.keywords && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px' }}>
-            {keywords.map((kw) => {
-              const isActive = activeCategory === 'keyword' && selectedId === kw;
-              return (
-                <button
-                  key={kw}
-                  className={`btn btn-sm ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 16 }}
-                  onClick={() => onSelectCategory('keyword', kw)}
-                >
-                  <Hash size={11} />
-                  <span>{kw}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Dates Section */}
