@@ -1,10 +1,40 @@
 use tauri::{AppHandle, Emitter, State};
 use notify::{Watcher, RecursiveMode, Event, EventKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
 use serde::Serialize;
 use std::time::Duration;
+
+const TRASH_DIR_NAMES: &[&str] = &["$recycle.bin", ".trash", ".trashes", ".recycle", "recycler"];
+
+fn is_in_trash_dir(path: &Path) -> bool {
+    path.components().any(|c| {
+        let name = c.as_os_str().to_string_lossy().to_lowercase();
+        TRASH_DIR_NAMES.contains(&name.as_str())
+    })
+}
+
+fn is_hidden_path(path: &Path) -> bool {
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if name.starts_with('.') {
+            return true;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
 
 #[derive(Clone, Serialize)]
 pub struct FileChangeEvent {
@@ -47,9 +77,13 @@ pub fn init_watcher(app: AppHandle, state: &WatcherState) -> Result<(), String> 
             };
 
             for path in event.paths {
+                if is_hidden_path(&path) || is_in_trash_dir(&path) {
+                    continue;
+                }
+
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 let name_lower = name.to_lowercase();
-                if !name_lower.ends_with(".pdf") && 
+                if !name_lower.ends_with(".pdf") &&
                    !name_lower.ends_with(".doc") &&
                    !name_lower.ends_with(".docx") &&
                    !name_lower.ends_with(".xls") &&

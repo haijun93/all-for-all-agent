@@ -76,3 +76,57 @@ pub async fn generate_photo_thumbnail(
 
     Ok(result)
 }
+
+/// Loads a photo at its true original resolution, for the editor's on-demand
+/// full-quality path. Unlike `generate_photo_thumbnail`, this never downsizes
+/// (the shared resize helper is a no-op when max_w/max_h already exceed the
+/// source dimensions) — it still re-encodes to JPEG so editing/export always
+/// receives a consistent, browser-decodable format regardless of the source
+/// (PNG, WEBP, etc). Cached separately from thumbnails since it's a distinct,
+/// larger asset, and is only ever generated the moment a user actually opens
+/// a specific photo in the editor.
+#[tauri::command]
+pub async fn generate_photo_full_res(app: AppHandle, path: String) -> Result<PhotoThumbnail, String> {
+    let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let modified_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("photo-fullres");
+    let _ = std::fs::create_dir_all(&cache_dir);
+
+    let key = cache_key(&path, modified_ms, u32::MAX);
+    let cache_path = cache_dir.join(format!("{key}.json"));
+
+    if let Ok(cached_bytes) = std::fs::read(&cache_path) {
+        if let Ok(cached) = serde_json::from_slice::<PhotoThumbnail>(&cached_bytes) {
+            return Ok(cached);
+        }
+    }
+
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let (orig_w, orig_h) = (img.width(), img.height());
+
+    let full_res_data_url = resize_to_jpeg_data_url(&img, orig_w, orig_h, 92)
+        .ok_or_else(|| "failed to encode full-resolution image".to_string())?;
+
+    let result = PhotoThumbnail {
+        thumbnail_data_url: full_res_data_url,
+        width: orig_w,
+        height: orig_h,
+    };
+
+    if let Ok(serialized) = serde_json::to_vec(&result) {
+        let _ = std::fs::write(&cache_path, serialized);
+    }
+
+    Ok(result)
+}

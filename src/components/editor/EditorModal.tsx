@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Photo, EditParams } from '../../types/photo';
 import { ImageProcessor, DEFAULT_EDIT_PARAMS } from '../../services/imageProcessor';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { BasicFixesTab } from './BasicFixesTab';
 import { TuningTab } from './TuningTab';
 import { EffectsTab } from './EffectsTab';
@@ -42,9 +43,38 @@ export const EditorModal: React.FC<EditorModalProps> = ({
   const [isSplitView, setIsSplitView] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [fullResUrl, setFullResUrl] = useState<string | null>(null);
+  const [isLoadingFullRes, setIsLoadingFullRes] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const originalImageSource = photo.originalUrl || photo.url;
+  // Natively-scanned photos carry a capped ~1600px preview in url/originalUrl
+  // (kept small for low-spec-hardware grid scrolling); the editor needs the
+  // true source resolution, so it's fetched on demand the moment a specific
+  // photo is actually opened here, and used once it arrives.
+  const originalImageSource = fullResUrl || photo.originalUrl || photo.url;
+
+  useEffect(() => {
+    let cancelled = false;
+    setFullResUrl(null);
+
+    if (photo.sourcePath && isTauri()) {
+      setIsLoadingFullRes(true);
+      invoke<{ thumbnail_data_url: string; width: number; height: number }>('generate_photo_full_res', {
+        path: photo.sourcePath,
+      })
+        .then((res) => {
+          if (!cancelled) setFullResUrl(res.thumbnail_data_url);
+        })
+        .catch((e) => console.warn('[EditorModal] Failed to load full-resolution photo, using cached preview:', e))
+        .finally(() => {
+          if (!cancelled) setIsLoadingFullRes(false);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [photo.id, photo.sourcePath]);
 
   // Render canvas whenever params change
   const updateCanvas = useCallback(async () => {
@@ -169,6 +199,7 @@ export const EditorModal: React.FC<EditorModalProps> = ({
             </h3>
             <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
               {photo.exif?.camera || photo.exif?.cameraMake || '디지털 사진'} • {photo.width || photo.exif?.dimensions?.width || 1920}×{photo.height || photo.exif?.dimensions?.height || 1080}
+              {isLoadingFullRes && ' • 원본 화질 불러오는 중...'}
             </span>
           </div>
         </div>

@@ -78,6 +78,11 @@ export interface Photo {
   url: string;
   originalUrl: string;
   thumbnailUrl?: string;
+  /** Absolute filesystem path (native/Tauri scans only) used to fetch a true
+   * full-resolution image on demand when the editor opens — `url`/`originalUrl`
+   * for natively-indexed photos are capped at 1600px for low-spec-hardware
+   * grid/lightbox performance and are not suitable for editing/export. */
+  sourcePath?: string;
   dateAdded?: number;
   date?: string;
   dateTaken?: string;

@@ -153,6 +153,7 @@ export class PhotoLightningIndexer {
           url: PLACEHOLDER_THUMBNAIL,
           originalUrl: PLACEHOLDER_THUMBNAIL,
           thumbnailUrl: PLACEHOLDER_THUMBNAIL,
+          sourcePath: f.path,
           dateAdded: f.modified || Date.now(),
           dateTaken: dateStr,
           fileSize: f.size,

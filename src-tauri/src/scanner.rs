@@ -1,7 +1,39 @@
 use tauri::{AppHandle, Emitter};
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 use serde::Serialize;
 use std::time::Instant;
+
+// Recycle-bin / trash directory names to skip entirely (whole subtree),
+// so previously-deleted documents never show up as scan results.
+const TRASH_DIR_NAMES: &[&str] = &["$recycle.bin", ".trash", ".trashes", ".recycle", "recycler"];
+
+fn is_trash_dir(entry: &DirEntry) -> bool {
+    if !entry.file_type().is_dir() {
+        return false;
+    }
+    let name = entry.file_name().to_string_lossy().to_lowercase();
+    TRASH_DIR_NAMES.contains(&name.as_str())
+}
+
+fn is_hidden(entry: &DirEntry) -> bool {
+    let name = entry.file_name().to_string_lossy();
+    if name.starts_with('.') && name != "." && name != ".." {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
 
 #[derive(Clone, Serialize)]
 struct ScanProgress {
@@ -39,7 +71,11 @@ pub async fn scan_directory(
     // Send a file batch every 50 files
     let mut batch: Vec<ScannedFile> = Vec::with_capacity(50);
 
-    for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&path)
+        .into_iter()
+        .filter_entry(|e| !is_trash_dir(e) && !is_hidden(e))
+        .filter_map(|e| e.ok())
+    {
         if !entry.file_type().is_file() {
             continue;
         }

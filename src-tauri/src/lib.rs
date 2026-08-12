@@ -24,7 +24,8 @@ pub fn run() {
       watcher::start_watching,
       watcher::stop_watching,
       indexer::extract_and_analyze,
-      photo::generate_photo_thumbnail
+      photo::generate_photo_thumbnail,
+      photo::generate_photo_full_res
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
