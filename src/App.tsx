@@ -5,6 +5,7 @@ import { getDocFormatGroup } from './types/document';
 import { StorageService } from './services/storage';
 import { DocStorageService } from './services/docStorage';
 import { Header, type AppMode } from './components/common/Header';
+import { MenuBar } from './components/common/MenuBar';
 import { Sidebar } from './components/common/Sidebar';
 import { BottomBar } from './components/common/BottomBar';
 import { GalleryView } from './components/gallery/GalleryView';
@@ -499,8 +500,36 @@ export const App: React.FC = () => {
     return photos.filter((p) => selectedPhotoIds.has(p.id));
   }, [photos, selectedPhotoIds]);
 
+  const handleClearSelection = () => {
+    if (appMode === 'documents') {
+      setSelectedDocIds(new Set());
+    } else {
+      setSelectedPhotoIds(new Set());
+    }
+  };
+
   return (
     <div className="app-container">
+      {/* Classic Menu Bar */}
+      <MenuBar
+        appMode={appMode}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onOpenFolderManager={() =>
+          appMode === 'documents' ? setIsDocFolderManagerOpen(true) : setIsFolderManagerOpen(true)
+        }
+        onOpenImport={() =>
+          appMode === 'documents' ? setIsDocFolderManagerOpen(true) : setIsImportOpen(true)
+        }
+        onStartSlideshow={appMode === 'photos' ? () => setIsSlideshowOpen(true) : undefined}
+        onResetDefaults={handleResetDefaults}
+        onCreateAlbum={handleCreateAlbum}
+        selectedCount={appMode === 'documents' ? selectedDocIds.size : selectedPhotoIds.size}
+        onDeleteSelected={appMode === 'documents' ? handleBatchDocDelete : handleBatchDelete}
+        onToggleStarSelected={appMode === 'documents' ? handleBatchDocStar : handleBatchStar}
+        onClearSelection={handleClearSelection}
+      />
+
       {/* Top Application Header */}
       <Header
         appMode={appMode}
