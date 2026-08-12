@@ -19,9 +19,20 @@ import { TrayWatcherService } from './trayWatcher';
  * After the lightning scan completes, a background enrichment pass lazily
  * extracts real thumbnails for files visible in the viewport.
  */
+interface EnrichmentEntry {
+  folderPath: string;
+  // Browser (non-Tauri) path
+  file?: File;
+  // Native (Tauri) path
+  path?: string;
+  format?: DocFormat;
+  size?: number;
+  modified?: number;
+}
+
 export class LightningIndexer {
   private static fileSystemObserver: any = null;
-  private static enrichmentQueue: Map<string, { file: File; folderPath: string }> = new Map();
+  private static enrichmentQueue: Map<string, EnrichmentEntry> = new Map();
   private static enrichmentAbortId = 0;
   private static enrichmentListeners = new Set<(doc: DocumentItem) => void>();
 
@@ -275,9 +286,15 @@ export class LightningIndexer {
           BackgroundIndexer.enqueueDocStream(doc);
           unpersistedBuffer.push(doc);
           addedToBuffer = true;
-          
-          // Tauri environments will need a different enrichment system using Tauri APIs,
-          // but for now we skip queuing native files for Web API enrichment.
+
+          // Queue for native (Rust) background enrichment when scrolled into view
+          this.enrichmentQueue.set(docIdUnique, {
+            folderPath: folderStr,
+            path: file.path,
+            format: BackgroundIndexer.inferFormat(file.name),
+            size: file.size,
+            modified: file.modified,
+          });
         }
       }
 
@@ -518,7 +535,16 @@ export class LightningIndexer {
     if (!queued) return null;
 
     try {
-      const doc = await BackgroundIndexer.createRealDocItem(queued.file, queued.folderPath);
+      const doc = queued.path
+        ? await BackgroundIndexer.createRealDocItemNative(
+            queued.path,
+            queued.format || BackgroundIndexer.inferFormat(queued.path),
+            queued.folderPath,
+            queued.size || 0,
+            queued.modified || Date.now()
+          )
+        : await BackgroundIndexer.createRealDocItem(queued.file as File, queued.folderPath);
+      doc.id = docId;
       this.enrichmentQueue.delete(docId);
 
       DocStorageService.saveDocument(doc).catch(console.warn);

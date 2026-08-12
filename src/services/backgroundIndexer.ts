@@ -3,6 +3,7 @@ import { KeywordEngine } from './keywordEngine';
 import { FastDocIndex } from './fastDocIndex';
 import { DocStorageService } from './docStorage';
 import { RealDocExtractor } from './realDocExtractor';
+import { DocRendererService } from './docRenderer';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { TrayWatcherService } from './trayWatcher';
@@ -206,21 +207,27 @@ export class BackgroundIndexer {
   }
 
   /**
+   * Infers a DocFormat from a file name's extension.
+   */
+  public static inferFormat(fileName: string): DocFormat {
+    const ext = fileName.split('.').pop()?.toLowerCase() || 'txt';
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'docx' || ext === 'doc') return 'docx';
+    if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'xlsx';
+    if (ext === 'hwp') return 'hwp';
+    if (ext === 'hwpx') return 'hwpx';
+    if (ext === 'epub') return 'epub';
+    if (ext === 'zip') return 'zip';
+    if (ext === 'cbz') return 'cbz';
+    if (ext === 'pptx' || ext === 'ppt') return 'pptx';
+    return 'txt';
+  }
+
+  /**
    * Generates document item with REAL 1st page visual thumbnail extracted from actual binary file
    */
   public static async createRealDocItem(file: File, folderPath: string): Promise<DocumentItem> {
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
-    let format: DocFormat = 'txt';
-    if (ext === 'pdf') format = 'pdf';
-    else if (ext === 'docx' || ext === 'doc') format = 'docx';
-    else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') format = 'xlsx';
-    else if (ext === 'hwp') format = 'hwp';
-    else if (ext === 'hwpx') format = 'hwpx';
-    else if (ext === 'epub') format = 'epub';
-    else if (ext === 'zip') format = 'zip';
-    else if (ext === 'cbz') format = 'cbz';
-    else if (ext === 'pptx' || ext === 'ppt') format = 'pptx';
-
+    const format = this.inferFormat(file.name);
     const title = file.name.replace(/\.[^/.]+$/, '');
     const dateStr = new Date(file.lastModified).toISOString().split('T')[0];
 
@@ -254,6 +261,65 @@ export class BackgroundIndexer {
       extractedText: realData.extractedText,
       keywords: deepAnalysis.keywords,
       category: deepAnalysis.category,
+      folder: folderPath,
+      isStarred: false,
+      author: '로컬 사용자',
+      company: '내 컴퓨터',
+    };
+  }
+
+  /**
+   * Builds a document item using the native Rust extractor (extract_and_analyze),
+   * bypassing the WebView JS engine entirely for parsing/keyword analysis.
+   * Used by both the deep-scan path and Lightning's native enrichment path.
+   */
+  public static async createRealDocItemNative(
+    filePath: string,
+    format: DocFormat,
+    folderPath: string,
+    fileSize: number,
+    modifiedMs: number
+  ): Promise<DocumentItem> {
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const title = fileName.replace(/\.[^/.]+$/, '');
+    const dateStr = new Date(modifiedMs || Date.now()).toISOString().split('T')[0];
+    const docId = this.generateDocId(folderPath, fileName);
+
+    const result = await invoke<{
+      text: string;
+      page_count: number;
+      cover_data_url: string | null;
+      category: string;
+      keywords: string[];
+      snippet: string;
+    }>('extract_and_analyze', { path: filePath, format });
+
+    const thumbnailUrl =
+      result.cover_data_url ||
+      DocRendererService.generateDocumentFirstPageThumbnail(
+        title,
+        format,
+        result.category,
+        result.snippet || title,
+        dateStr,
+        '작성자'
+      );
+
+    return {
+      id: docId,
+      title,
+      fileName,
+      filePath,
+      fileSize,
+      format,
+      dateCreated: dateStr,
+      dateModified: dateStr,
+      pageCount: result.page_count,
+      thumbnailUrl,
+      previewSnippet: result.snippet,
+      extractedText: result.text,
+      keywords: result.keywords,
+      category: result.category,
       folder: folderPath,
       isStarred: false,
       author: '로컬 사용자',
@@ -346,16 +412,19 @@ export class BackgroundIndexer {
           this.enqueueDocStream(cachedDoc);
         }
       } else {
-        // Full extraction with binary read from Rust
+        // Full extraction natively in Rust — no bytes cross the IPC bridge,
+        // no WebView JS engine involved.
         try {
-          const rawBytes: number[] = await invoke('read_file_binary', { path: fileItem.path });
-          const blob = new Blob([new Uint8Array(rawBytes)]);
-          const fileObj = new File([blob], fileItem.name, { lastModified: fileItem.modified });
-          
           const folderStr = fileItem.path.substring(0, fileItem.path.length - fileItem.name.length);
-          const doc = await this.createRealDocItem(fileObj, folderStr);
+          const format = this.inferFormat(fileItem.name);
+          const doc = await this.createRealDocItemNative(
+            fileItem.path,
+            format,
+            folderStr,
+            fileItem.size,
+            fileItem.modified
+          );
           doc.id = docId;
-          doc.filePath = fileItem.path;
 
           newCount++;
           unpersistedBuffer.push(doc);

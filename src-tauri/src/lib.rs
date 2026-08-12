@@ -1,3 +1,6 @@
+mod extractor;
+mod indexer;
+mod keyword_engine;
 mod scanner;
 mod watcher;
 
@@ -13,11 +16,12 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(WatcherState::default())
     .invoke_handler(tauri::generate_handler![
-      scanner::scan_directory, 
+      scanner::scan_directory,
       scanner::read_file_binary,
       scanner::open_file_with_default_app,
       watcher::start_watching,
-      watcher::stop_watching
+      watcher::stop_watching,
+      indexer::extract_and_analyze
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
