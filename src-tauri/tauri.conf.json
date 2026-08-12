@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "picasa-web-studio",
-  "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "productName": "Picasa Web Studio",
+  "version": "1.0.2",
+  "identifier": "com.picasa.webstudio",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "Picasa Web Studio",
-        "width": 800,
-        "height": 600,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
         "resizable": true,
         "fullscreen": false
       }
