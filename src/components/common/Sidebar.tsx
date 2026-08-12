@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Album, Person } from '../../types/photo';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import { getWatchedFolders, WATCHED_FOLDERS_CHANGED_EVENT } from '../../utils/watchedFolders';
+import { FolderTree } from '../gallery/FolderTree';
 import {
   Images,
   Star,
-  Folder,
   FolderPlus,
   Tag,
   ChevronDown,
@@ -56,9 +58,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     people: true,
     tags: false,
   });
+  const [watchedFolders, setWatchedFolders] = useState<string[]>(() => getWatchedFolders());
+
+  useEffect(() => {
+    const refresh = () => setWatchedFolders(getWatchedFolders());
+    window.addEventListener(WATCHED_FOLDERS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(WATCHED_FOLDERS_CHANGED_EVENT, refresh);
+  }, []);
 
   const toggleSection = (key: keyof typeof openSections) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleOpenFolderInExplorer = (path: string) => {
+    if (!isTauri()) return;
+    invoke('open_file_with_default_app', { path }).catch((e) =>
+      console.warn('[Sidebar] Failed to open folder in file explorer:', e)
+    );
   };
 
   const handleCreateAlbumSubmit = (e: React.FormEvent) => {
@@ -269,7 +285,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Folders Section */}
+      {/* Folders Section — real, lazily-expandable OS folder tree (like
+          Picasa 3's "내 컴퓨터" tree) when running natively with indexed
+          root folders; falls back to a flat list of folders that actually
+          contain photos otherwise (browser mode, or before any folder has
+          been indexed). */}
       <div>
         <div
           className="sidebar-section-title"
@@ -280,27 +300,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {openSections.folders ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span>폴더 (Folders)</span>
           </div>
-          <span style={{ fontSize: '0.7rem' }}>{folders.length}</span>
+          <span style={{ fontSize: '0.7rem' }}>{(watchedFolders.length > 0 ? watchedFolders : folders).length}</span>
         </div>
 
         {openSections.folders && (
-          <ul className="sidebar-nav-list">
-            {folders.map((folder) => {
-              const isActive = activeCategory === 'folder' && selectedId === folder;
-              return (
-                <li
-                  key={folder}
-                  className={`sidebar-item ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectCategory('folder', folder)}
-                >
-                  <div className="sidebar-item-left">
-                    <Folder size={15} color="#fbbc05" />
-                    <span title={folder}>{folder}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          isTauri() && watchedFolders.length > 0 ? (
+            <FolderTree
+              rootFolders={watchedFolders}
+              activeCategory={activeCategory}
+              selectedId={selectedId}
+              onSelectFolder={(path) => onSelectCategory('folder', path)}
+              onOpenInExplorer={handleOpenFolderInExplorer}
+            />
+          ) : (
+            <ul className="sidebar-nav-list">
+              {folders.map((folder) => {
+                const isActive = activeCategory === 'folder' && selectedId === folder;
+                return (
+                  <li
+                    key={folder}
+                    className={`sidebar-item ${isActive ? 'active' : ''}`}
+                    onClick={() => onSelectCategory('folder', folder)}
+                  >
+                    <div className="sidebar-item-left">
+                      <FolderArchive size={15} color="#fbbc05" />
+                      <span title={folder}>{folder}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )
         )}
       </div>
 

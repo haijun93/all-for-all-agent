@@ -23,6 +23,7 @@ pub fn run() {
       scanner::scan_directory,
       scanner::read_file_binary,
       scanner::open_file_with_default_app,
+      scanner::list_subdirectories,
       scanner::pause_scan,
       scanner::resume_scan,
       scanner::cancel_scan,

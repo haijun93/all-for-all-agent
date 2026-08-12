@@ -216,6 +216,68 @@ pub async fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| e.to_string())
 }
 
+#[derive(Clone, Serialize)]
+pub struct SubdirInfo {
+    pub name: String,
+    pub path: String,
+    /// Whether this folder has at least one subfolder of its own — lets the
+    /// tree UI show/hide an expand arrow without having to eagerly walk the
+    /// whole subtree just to find out.
+    pub has_children: bool,
+}
+
+fn is_hidden_or_trash_name(name: &str) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    TRASH_DIR_NAMES.contains(&name.to_lowercase().as_str())
+}
+
+/// Lists the immediate subdirectories of a folder — one shallow readdir,
+/// no recursion — for lazily expanding a folder tree node at a time
+/// instead of walking (and holding in memory) the entire subtree upfront.
+#[tauri::command]
+pub async fn list_subdirectories(path: String) -> Result<Vec<SubdirInfo>, String> {
+    let root = dunce::simplified(std::path::Path::new(&path)).to_path_buf();
+    let read_dir = std::fs::read_dir(&root).map_err(|e| e.to_string())?;
+
+    let mut entries: Vec<SubdirInfo> = Vec::new();
+    for entry in read_dir.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(t) if t.is_dir() => t,
+            _ => continue,
+        };
+        let _ = file_type;
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_hidden_or_trash_name(&name) {
+            continue;
+        }
+
+        let entry_path = entry.path();
+        let has_children = std::fs::read_dir(&entry_path)
+            .map(|mut rd| {
+                rd.any(|child| {
+                    child
+                        .ok()
+                        .and_then(|c| c.file_type().ok())
+                        .map(|t| t.is_dir())
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        entries.push(SubdirInfo {
+            name,
+            path: entry_path.to_string_lossy().to_string(),
+            has_children,
+        });
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(entries)
+}
+
 #[tauri::command]
 pub async fn open_file_with_default_app(path: String) -> Result<(), String> {
     // Verbatim `\\?\`-prefixed paths can confuse `cmd /C start` on Windows;
@@ -252,6 +314,34 @@ pub async fn open_file_with_default_app(path: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn is_hidden_or_trash_name_matches_dotfiles_and_recycle_bin() {
+        assert!(is_hidden_or_trash_name(".git"));
+        assert!(is_hidden_or_trash_name("$RECYCLE.BIN"));
+        assert!(is_hidden_or_trash_name("$recycle.bin"));
+        assert!(!is_hidden_or_trash_name("Documents"));
+        assert!(!is_hidden_or_trash_name("2026 Photos"));
+    }
+
+    #[tokio::test]
+    async fn list_subdirectories_returns_only_real_visible_dirs() {
+        let base = std::env::temp_dir().join(format!("scanner_listdir_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("Documents")).unwrap();
+        fs::create_dir_all(base.join("Documents").join("Sub")).unwrap();
+        fs::create_dir_all(base.join(".hidden")).unwrap();
+        fs::create_dir_all(base.join("$RECYCLE.BIN")).unwrap();
+        fs::write(base.join("not_a_dir.txt"), b"x").unwrap();
+
+        let entries = list_subdirectories(base.to_string_lossy().to_string()).await.unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+
+        assert_eq!(names, vec!["Documents"]);
+        assert!(entries[0].has_children, "Documents has a Sub folder");
+
+        let _ = fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn walk_filters_trash_and_hidden_but_keeps_normal_files() {

@@ -3,6 +3,7 @@ import { FolderScannerService, type ScanProgress } from '../../services/folderSc
 import { PhotoLightningIndexer } from '../../services/photoLightningIndexer';
 import { StorageService } from '../../services/storage';
 import { ScanControlService } from '../../services/scanControl';
+import { getWatchedFolders, setWatchedFolders as persistWatchedFolders } from '../../utils/watchedFolders';
 import { fileExplorerName, isWindows } from '../../utils/platform';
 import { isTauri } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -38,18 +39,11 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
   const [isPaused, setIsPaused] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastScannedPath, setLastScannedPath] = useState<string | null>(null);
-  const [watchedFolders, setWatchedFolders] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('picasa_watched_folders');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [watchedFolders, setWatchedFolders] = useState<string[]>(() => getWatchedFolders());
   const fallbackInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('picasa_watched_folders', JSON.stringify(watchedFolders));
+    persistWatchedFolders(watchedFolders);
   }, [watchedFolders]);
 
   if (!isOpen) return null;

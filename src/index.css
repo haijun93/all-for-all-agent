@@ -296,6 +296,61 @@ body {
   color: var(--accent-blue);
 }
 
+/* Folder Tree (Windows-Explorer-style lazy tree view) */
+.folder-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.folder-tree-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.folder-tree-row.active {
+  background: var(--accent-blue-subtle);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.folder-tree-computer {
+  cursor: default;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.folder-tree-computer:hover {
+  background: transparent;
+}
+
+.folder-tree-twisty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.folder-tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .person-avatar-mini {
   width: 22px;
   height: 22px;
