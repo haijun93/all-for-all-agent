@@ -1,45 +1,50 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg-app: #0c0e12;
-  --bg-sidebar: #13171f;
-  --bg-header: #13171fe6;
-  --bg-card: #1a202c;
-  --bg-card-hover: #222a3a;
-  --bg-panel: #161b24;
-  --bg-input: #1f2735;
-  --bg-dropdown: #1a202c;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --border-focus: #4285f4;
+  /* Classic-Windows (Picasa 3 era) light palette — phase 4 of the
+     Picasa 3 UI parity work. Everything reading these variables picks up
+     the new theme automatically. A few panels (indexing HUD, folder-scan
+     modal) keep their own intentionally dark accent styling independent
+     of these tokens and were verified for contrast, not converted. */
+  --bg-app: #ffffff;
+  --bg-sidebar: #f2f2f2;
+  --bg-header: #ece9e2;
+  --bg-card: #ffffff;
+  --bg-card-hover: #eaf3ff;
+  --bg-panel: #f7f7f7;
+  --bg-input: #ffffff;
+  --bg-dropdown: #ffffff;
+  --border-subtle: #d9d9d9;
+  --border-strong: #b5b5b5;
+  --border-focus: #3399ff;
 
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-highlight: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #454545;
+  --text-muted: #767676;
+  --text-highlight: #000000;
 
-  --accent-blue: #4285f4;
-  --accent-blue-hover: #3b78e7;
-  --accent-blue-subtle: rgba(66, 133, 244, 0.15);
-  --accent-red: #ea4335;
-  --accent-yellow: #fbbc05;
-  --accent-green: #34a853;
-  --accent-purple: #a855f7;
+  --accent-blue: #2a7de1;
+  --accent-blue-hover: #1f6bc9;
+  --accent-blue-subtle: rgba(42, 125, 225, 0.12);
+  --accent-red: #d93025;
+  --accent-yellow: #e8a600;
+  --accent-green: #1e8e3e;
+  --accent-purple: #8430ce;
 
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.6);
-  --shadow-picasa: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-picasa: 0 6px 20px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.3);
 
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Plus Jakarta Sans', var(--font-sans);
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Segoe UI', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: 'Consolas', 'JetBrains Mono', monospace;
 
   --sidebar-width: 260px;
   --header-height: 64px;
