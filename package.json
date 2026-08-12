@@ -39,6 +39,11 @@
         "zip"
       ],
       "category": "public.app-category.photography"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "haijun93",
+      "repo": "all-for-all-agent"
     }
   },
   "dependencies": {
