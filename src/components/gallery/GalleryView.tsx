@@ -55,11 +55,28 @@ export const GalleryView: React.FC<GalleryViewProps> = ({
       groups[key].push(photo);
     });
 
-    return Object.entries(groups).map(([title, items]) => ({
-      title,
-      photos: items,
-      key: title,
-    }));
+    return Object.entries(groups).map(([title, items]) => {
+      // Picasa-3-style subtitle beneath the folder name: the date (or date
+      // range) the photos in this group were taken. Only meaningful when
+      // grouping by folder — the date/place/region groupings already say
+      // "when"/"where" in the title itself.
+      let subtitle: string | undefined;
+      if (groupBy === 'folder') {
+        const dates = items.map((p) => p.dateTaken).filter((d): d is string => !!d).sort();
+        if (dates.length > 0) {
+          const first = dates[0];
+          const last = dates[dates.length - 1];
+          subtitle = first === last ? first : `${first} ~ ${last}`;
+        }
+      }
+
+      return {
+        title,
+        photos: items,
+        key: title,
+        subtitle,
+      };
+    });
   }, [photos, groupBy]);
 
   if (photos.length === 0) {
@@ -98,27 +115,30 @@ export const GalleryView: React.FC<GalleryViewProps> = ({
         return (
           <section key={group.key} className="gallery-group">
             <div className="gallery-group-header">
-              <div className="gallery-group-title">
-                {groupBy === 'folder' ? (
-                  <Folder size={18} color="#fbbc05" />
-                ) : groupBy === 'date' ? (
-                  <Calendar size={18} color="#4285f4" />
-                ) : groupBy === 'place' ? (
-                  <MapPin size={18} color="#ea4335" />
-                ) : (
-                  <Globe2 size={18} color="#34a853" />
-                )}
-                <span>{group.title}</span>
-                <span className="gallery-group-count">({group.photos.length}장)</span>
+              <div className="gallery-group-title-block">
+                <div className="gallery-group-title">
+                  {groupBy === 'folder' ? (
+                    <Folder size={13} color="#fbbc05" />
+                  ) : groupBy === 'date' ? (
+                    <Calendar size={13} color="#4285f4" />
+                  ) : groupBy === 'place' ? (
+                    <MapPin size={13} color="#ea4335" />
+                  ) : (
+                    <Globe2 size={13} color="#34a853" />
+                  )}
+                  <span>{group.title}</span>
+                  <span className="gallery-group-count">({group.photos.length}장)</span>
+                </div>
+                {group.subtitle && <span className="gallery-group-subtitle">{group.subtitle}</span>}
               </div>
 
               <button
                 className="btn btn-ghost btn-sm"
-                style={{ fontSize: '0.76rem', color: isAllSelected ? 'var(--accent-blue)' : 'var(--text-muted)' }}
+                style={{ fontSize: '0.72rem', color: isAllSelected ? 'var(--accent-blue)' : 'var(--text-muted)' }}
                 onClick={() => onSelectGroup(groupPhotoIds)}
               >
-                <CheckSquare size={14} />
-                <span>{isAllSelected ? '그룹 선택 해제' : '그룹 선택'}</span>
+                <CheckSquare size={12} />
+                <span>{isAllSelected ? '선택 해제' : '전체 선택'}</span>
               </button>
             </div>
 
