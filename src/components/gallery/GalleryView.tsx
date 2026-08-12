@@ -122,7 +122,7 @@ export const GalleryView: React.FC<GalleryViewProps> = ({
               </button>
             </div>
 
-            <div className="photos-grid">
+            <div className="gallery-grid">
               {group.photos.map((photo) => (
                 <PhotoCard
                   key={photo.id}
