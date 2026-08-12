@@ -67,6 +67,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
         setErrorMessage('폴더 접근 권한이 취소되었거나 지원되지 않습니다. 아래 폴더 선택 버튼을 이용해 주세요.');
       }
       setIsScanning(false);
+      setProgress((prev) => (prev ? { ...prev, isScanning: false } : prev));
     }
   };
 

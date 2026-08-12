@@ -38,10 +38,13 @@ export class FolderScannerService {
       path: string
     ): Promise<void> => {
       for await (const entry of handle.values()) {
-        if (entry.kind === 'file') {
-          const file = await entry.getFile();
-          if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|heic)$/i.test(file.name)) {
-            try {
+        try {
+          if (entry.kind === 'file') {
+            // A single unreadable file (OneDrive cloud-only placeholder, a
+            // locked/permission-denied file, a broken reparse point, etc.)
+            // must not abort the entire scan — skip it and keep going.
+            const file = await entry.getFile();
+            if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|heic)$/i.test(file.name)) {
               await StorageService.importLocalFile(file, path);
               foundCount++;
               onProgress?.({
@@ -50,14 +53,14 @@ export class FolderScannerService {
                 isScanning: true,
                 statusText: `'${file.name}' 인덱싱 중... (총 ${foundCount}장)`,
               });
-            } catch (e) {
-              console.warn('Failed to read image file:', file.name, e);
             }
+          } else if (entry.kind === 'directory') {
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+            const subPath = `${path}/${entry.name}`;
+            await processDirectory(entry, subPath);
           }
-        } else if (entry.kind === 'directory') {
-          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-          const subPath = `${path}/${entry.name}`;
-          await processDirectory(entry, subPath);
+        } catch (e) {
+          console.warn('Skipping unreadable entry:', entry.name, e);
         }
       }
     };
