@@ -43,8 +43,7 @@
     "publish": {
       "provider": "github",
       "owner": "haijun93",
-      "repo": "all-for-all-agent",
-      "releaseType": "release"
+      "repo": "all-for-all-agent"
     }
   },
   "dependencies": {
