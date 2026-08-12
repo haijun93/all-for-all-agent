@@ -22,3 +22,21 @@ export interface DocumentItem {
 }
 
 export type DocGroupBy = 'keyword' | 'date' | 'format' | 'category' | 'folder';
+
+// Simplified, user-facing format buckets for the sidebar filter — collapses
+// the many real extensions the scanner indexes (docx, pptx, txt, zip, ...)
+// down to the 4 categories users actually want to filter by. Formats not
+// covered by any bucket (e.g. docx) simply have no format-filter entry;
+// they're still fully indexed and browsable via category/folder/keyword.
+export type DocFormatGroup = 'hangul' | 'pdf' | 'excel' | 'ebook';
+
+export const DOC_FORMAT_GROUPS: Array<{ key: DocFormatGroup; label: string; formats: DocFormat[] }> = [
+  { key: 'hangul', label: '한글문서', formats: ['hwp', 'hwpx'] },
+  { key: 'pdf', label: 'PDF', formats: ['pdf'] },
+  { key: 'excel', label: '엑셀문서', formats: ['xlsx', 'xls'] },
+  { key: 'ebook', label: '전자책', formats: ['epub', 'cbz', 'zip'] },
+];
+
+export function getDocFormatGroup(format: DocFormat): DocFormatGroup | null {
+  return DOC_FORMAT_GROUPS.find((g) => g.formats.includes(format))?.key ?? null;
+}

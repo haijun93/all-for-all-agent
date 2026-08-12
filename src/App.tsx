@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Photo, Album, Person, ViewMode, GroupBy } from './types/photo';
-import type { DocumentItem, DocFormat, DocGroupBy } from './types/document';
+import type { DocumentItem, DocGroupBy, DocFormatGroup } from './types/document';
+import { getDocFormatGroup } from './types/document';
 import { StorageService } from './services/storage';
 import { DocStorageService } from './services/docStorage';
 import { Header, type AppMode } from './components/common/Header';
@@ -221,10 +222,13 @@ export const App: React.FC = () => {
     return Array.from(set).sort().reverse();
   }, [documents]);
 
-  const docFormats = useMemo(() => {
-    const set = new Set<DocFormat>();
-    documents.forEach((d) => d.format && set.add(d.format));
-    return Array.from(set);
+  const docFormatGroupCounts = useMemo(() => {
+    const counts: Record<DocFormatGroup, number> = { hangul: 0, pdf: 0, excel: 0, ebook: 0 };
+    documents.forEach((d) => {
+      const group = d.format && getDocFormatGroup(d.format);
+      if (group) counts[group]++;
+    });
+    return counts;
   }, [documents]);
 
   const docFolders = useMemo(() => {
@@ -249,7 +253,7 @@ export const App: React.FC = () => {
       if (activeCategory === 'starred') return doc.isStarred;
       if (activeCategory === 'category' && selectedCategoryId) return doc.category === selectedCategoryId;
       if (activeCategory === 'keyword' && selectedCategoryId) return doc.keywords?.includes(selectedCategoryId);
-      if (activeCategory === 'format' && selectedCategoryId) return doc.format === selectedCategoryId;
+      if (activeCategory === 'format' && selectedCategoryId) return getDocFormatGroup(doc.format) === selectedCategoryId;
       if (activeCategory === 'folder' && selectedCategoryId) return doc.folder === selectedCategoryId;
       if (activeCategory === 'date' && selectedCategoryId) {
         const parts = doc.dateCreated.split('-');
@@ -530,7 +534,7 @@ export const App: React.FC = () => {
             categories={docCategories}
             keywords={docKeywords}
             dates={docDates}
-            formats={docFormats}
+            formatGroupCounts={docFormatGroupCounts}
             folders={docFolders}
             totalDocsCount={documents.length}
             starredCount={docStarredCount}

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import type { DocFormat } from '../../types/document';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { DOC_FORMAT_GROUPS, type DocFormatGroup } from '../../types/document';
+import { isTauri, invoke } from '@tauri-apps/api/core';
 import {
   FileText,
   Star,
@@ -19,11 +20,16 @@ interface DocSidebarProps {
   categories: string[];
   keywords: string[];
   dates: string[];
-  formats: DocFormat[];
+  formatGroupCounts: Record<DocFormatGroup, number>;
   folders: string[];
   totalDocsCount: number;
   starredCount: number;
 }
+
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 480;
+const DEFAULT_SIDEBAR_WIDTH = 260;
+const SIDEBAR_WIDTH_STORAGE_KEY = 'picasa_doc_sidebar_width';
 
 export const DocSidebar: React.FC<DocSidebarProps> = ({
   activeCategory,
@@ -32,7 +38,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
   categories,
   keywords,
   dates,
-  formats,
+  formatGroupCounts,
   folders,
   totalDocsCount,
   starredCount,
@@ -49,8 +55,76 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Resizable width, dragged via the handle on the right edge, persisted so
+  // the chosen width survives across sessions.
+  const [width, setWidth] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+      return saved >= MIN_SIDEBAR_WIDTH && saved <= MAX_SIDEBAR_WIDTH ? saved : DEFAULT_SIDEBAR_WIDTH;
+    } catch {
+      return DEFAULT_SIDEBAR_WIDTH;
+    }
+  });
+  const isResizing = useRef(false);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
+      setWidth(next);
+    };
+    const handleMouseUp = () => {
+      if (!isResizing.current) return;
+      isResizing.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setWidth((current) => {
+        try {
+          localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(current));
+        } catch {
+          // ignore
+        }
+        return current;
+      });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const handleOpenFolderInExplorer = (folderPath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isTauri()) return;
+    invoke('open_file_with_default_app', { path: folderPath }).catch((err) => {
+      console.error('[DocSidebar] Failed to open folder in file explorer:', err);
+    });
+  };
+
   return (
-    <aside className="app-sidebar">
+    <aside className="app-sidebar" style={{ width, position: 'relative', flexShrink: 0 }}>
+      <div
+        onMouseDown={handleResizeStart}
+        title="드래그하여 사이드바 폭 조절"
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: 6,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+        }}
+      />
       {/* Primary Collections */}
       <div>
         <div className="sidebar-section-title">
@@ -195,23 +269,25 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
             {openSections.formats ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span>📄 파일 포맷 (Formats)</span>
           </div>
-          <span style={{ fontSize: '0.7rem' }}>{formats.length}</span>
+          <span style={{ fontSize: '0.7rem' }}>{DOC_FORMAT_GROUPS.length}</span>
         </div>
 
         {openSections.formats && (
           <ul className="sidebar-nav-list">
-            {formats.map((fmt) => {
-              const isActive = activeCategory === 'format' && selectedId === fmt;
+            {DOC_FORMAT_GROUPS.map((group) => {
+              const isActive = activeCategory === 'format' && selectedId === group.key;
+              const count = formatGroupCounts[group.key] || 0;
               return (
                 <li
-                  key={fmt}
+                  key={group.key}
                   className={`sidebar-item ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectCategory('format', fmt)}
+                  onClick={() => onSelectCategory('format', group.key)}
                 >
                   <div className="sidebar-item-left">
                     <Layers size={14} color="#fbbc05" />
-                    <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{fmt} 문서</span>
+                    <span style={{ fontWeight: 600 }}>{group.label}</span>
                   </div>
+                  <span className="sidebar-badge">{count}</span>
                 </li>
               );
             })}
@@ -242,10 +318,12 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({
                   key={f}
                   className={`sidebar-item ${isActive ? 'active' : ''}`}
                   onClick={() => onSelectCategory('folder', f)}
+                  onDoubleClick={(e) => handleOpenFolderInExplorer(f, e)}
+                  title={`${f}\n더블클릭: 파일 탐색기에서 열기`}
                 >
                   <div className="sidebar-item-left">
                     <Folder size={14} color="#fbbc05" />
-                    <span title={f}>{f}</span>
+                    <span>{f}</span>
                   </div>
                 </li>
               );
