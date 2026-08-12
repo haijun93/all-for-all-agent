@@ -1,8 +1,40 @@
 import type { Photo } from '../types/photo';
 import { StorageService } from './storage';
-import { ExifExtractor } from './exifExtractor';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+
+// Caps how many photos can be decoding/resizing in Rust at once. Without
+// this, fast scrolling on a photo-heavy folder can fire dozens of
+// IntersectionObserver triggers within a few hundred ms, each spawning a
+// decode — a real problem on the low-spec dual-core machines this app
+// targets. 3 concurrent jobs keeps CPU usage smooth without stalling the
+// perceived scroll-to-thumbnail latency.
+const MAX_CONCURRENT_ENRICHMENTS = 3;
+let activeEnrichments = 0;
+const enrichmentWaitQueue: Array<() => void> = [];
+
+function acquireEnrichmentSlot(): Promise<void> {
+  if (activeEnrichments < MAX_CONCURRENT_ENRICHMENTS) {
+    activeEnrichments++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => enrichmentWaitQueue.push(resolve));
+}
+
+function releaseEnrichmentSlot(): void {
+  const next = enrichmentWaitQueue.shift();
+  if (next) {
+    next();
+  } else {
+    activeEnrichments--;
+  }
+}
+
+interface NativePhotoThumbnail {
+  thumbnail_data_url: string;
+  width: number;
+  height: number;
+}
 
 export interface PhotoScanProgress {
   currentFolder: string;
@@ -163,42 +195,39 @@ export class PhotoLightningIndexer {
   }
 
   /**
-   * Phase 2: reads the real file bytes for one photo, decodes it, and
-   * fills in its true thumbnail/dimensions/EXIF. Called when the photo's
-   * card scrolls into view (see PhotoCard's IntersectionObserver).
+   * Phase 2: asks Rust to decode + resize the photo to a display-ready
+   * size (cached to disk on the Rust side, so a re-scroll or app restart
+   * never re-decodes the same file twice) and fills in the placeholder
+   * with the result. Called when the photo's card scrolls into view (see
+   * PhotoCard's IntersectionObserver).
+   *
+   * Deliberately does NOT fetch full original-resolution bytes or EXIF —
+   * that only happens on-demand when a photo is actually opened in the
+   * editor, since grid/lightbox viewing never needs more than ~1600px.
    */
   public static async enrichPhoto(photoId: string): Promise<Photo | null> {
     const queued = this.enrichmentQueue.get(photoId);
     if (!queued) return null;
     this.enrichmentQueue.delete(photoId);
 
+    await acquireEnrichmentSlot();
     try {
-      const rawBytes: number[] = await invoke('read_file_binary', { path: queued.path });
       const fileName = queued.path.split(/[\\/]/).pop() || queued.path;
-      const blob = new Blob([new Uint8Array(rawBytes)]);
-      const file = new File([blob], fileName, { lastModified: queued.modified });
-      const objectUrl = URL.createObjectURL(blob);
-
-      const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve({ width: img.naturalWidth || 1920, height: img.naturalHeight || 1080 });
-        img.onerror = () => resolve({ width: 1920, height: 1080 });
-        img.src = objectUrl;
+      const result = await invoke<NativePhotoThumbnail>('generate_photo_thumbnail', {
+        path: queued.path,
+        maxDim: 1600,
       });
-
-      const exif = await ExifExtractor.extractMetadata(file);
 
       const existing = await StorageService.getPhoto(photoId);
       const updated: Photo = {
         ...(existing as Photo),
         id: photoId,
         title: fileName.replace(/\.[^/.]+$/, ''),
-        url: objectUrl,
-        originalUrl: objectUrl,
-        thumbnailUrl: objectUrl,
-        width: dimensions.width,
-        height: dimensions.height,
-        exif,
+        url: result.thumbnail_data_url,
+        originalUrl: result.thumbnail_data_url,
+        thumbnailUrl: result.thumbnail_data_url,
+        width: result.width,
+        height: result.height,
       };
 
       await StorageService.savePhoto(updated);
@@ -207,6 +236,8 @@ export class PhotoLightningIndexer {
     } catch (e) {
       console.warn('[PhotoLightningIndexer] Enrichment failed for', queued.path, e);
       return null;
+    } finally {
+      releaseEnrichmentSlot();
     }
   }
 }

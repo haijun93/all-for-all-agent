@@ -1,6 +1,8 @@
 mod extractor;
+mod image_utils;
 mod indexer;
 mod keyword_engine;
+mod photo;
 mod scanner;
 mod watcher;
 
@@ -21,7 +23,8 @@ pub fn run() {
       scanner::open_file_with_default_app,
       watcher::start_watching,
       watcher::stop_watching,
-      indexer::extract_and_analyze
+      indexer::extract_and_analyze,
+      photo::generate_photo_thumbnail
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
