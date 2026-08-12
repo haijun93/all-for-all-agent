@@ -46,18 +46,20 @@ fn is_trash_dir(entry: &DirEntry) -> bool {
 
 // Name-only check, safe to run during tree traversal (filter_entry) for
 // every directory and file: no filesystem calls, so it can never stall on
-// a slow or cloud-placeholder (OneDrive-style) path. The Windows hidden
-// *attribute* on FILES is checked separately in the main scan loop below,
-// only for files that already matched a target extension and already need
-// a metadata() call for size/mtime — reusing that fetch instead of issuing
-// a fresh metadata() call for every single file in the tree. (An earlier
-// version of this filter called metadata() here, inside filter_entry, for
-// every entry regardless of extension — which stalled scans indefinitely
-// on folders containing slow or cloud-placeholder reparse points, since
-// filter_entry runs before any extension match.) Hidden-attribute
-// DIRECTORIES are handled by is_hidden_dir_attribute below instead, since
-// directories are far fewer than files and bounding the check to them
-// keeps the same safety property without leaving hidden folders visible.
+// a slow or cloud-placeholder path, or on a slow network/mapped drive
+// (common in institutional environments). The Windows hidden *attribute*
+// is checked separately in the main scan loop below, only for FILES that
+// already matched a target extension and already need a metadata() call
+// for size/mtime — reusing that fetch instead of issuing a fresh one.
+//
+// A per-directory attribute check (metadata() on every folder visited,
+// regardless of match) was tried and reverted: it reintroduced the same
+// class of stall this comment already warns about, just scoped to
+// directories instead of files — directories are fewer than files, but on
+// a slow network share a metadata() round-trip per folder still adds up to
+// a scan that never visibly progresses. Attribute-hidden directories
+// (hidden without a dot-prefixed name) are therefore not excluded; only
+// dot-prefixed and named trash directories are.
 fn is_hidden_name(entry: &DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     name.starts_with('.') && name != "." && name != ".."
@@ -73,24 +75,6 @@ fn is_hidden_attribute(metadata: &std::fs::Metadata) -> bool {
 #[cfg(not(target_os = "windows"))]
 fn is_hidden_attribute(_metadata: &std::fs::Metadata) -> bool {
     false
-}
-
-// Windows can mark a folder "hidden" purely via the file attribute (no dot
-// prefix needed), which is how Explorer decides whether to show it with
-// the default "show hidden items" setting off — so a hidden-attribute
-// folder never appears in Explorer even though a raw directory walk can
-// still see it. Checked only for directories (never for files here), so
-// the extra metadata() call is bounded by directory count, not the much
-// larger file count — it can't reintroduce the per-file stall this same
-// filter caused before (see is_hidden_name's comment above).
-fn is_hidden_dir_attribute(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
-        return false;
-    }
-    match entry.metadata() {
-        Ok(metadata) => is_hidden_attribute(&metadata),
-        Err(_) => false,
-    }
 }
 
 #[derive(Clone, Serialize)]
@@ -138,7 +122,7 @@ pub async fn scan_directory(
 
     for entry in WalkDir::new(&path)
         .into_iter()
-        .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e) && !is_hidden_dir_attribute(e))
+        .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
         .filter_map(|e| e.ok())
     {
         // Cooperative pause/cancel checkpoint, once per entry. Pausing just
@@ -275,7 +259,7 @@ mod tests {
         let mut found = vec![];
         for entry in WalkDir::new(&base)
             .into_iter()
-            .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e) && !is_hidden_dir_attribute(e))
+            .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
             .filter_map(|e| e.ok())
         {
             if entry.file_type().is_file() {
@@ -285,6 +269,66 @@ mod tests {
         found.sort();
         assert_eq!(found, vec!["photo1.jpg", "photo2.png"]);
 
+        let _ = fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod async_control_tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    // Mirrors scan_directory's exact loop body (minus the AppHandle/emit
+    // calls, which need a running Tauri app) to verify the cooperative
+    // pause/cancel checkpoint terminates correctly and doesn't hang when
+    // never paused — i.e. the default, most common path.
+    async fn walk_with_control(path: &std::path::Path, control: &(AtomicBool, AtomicBool)) -> usize {
+        let (paused, cancelled) = control;
+        let mut total = 0;
+        for entry in WalkDir::new(path)
+            .into_iter()
+            .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
+            .filter_map(|e| e.ok())
+        {
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            while paused.load(Ordering::Relaxed) {
+                if cancelled.load(Ordering::Relaxed) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(150)).await;
+            }
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            if entry.file_type().is_file() {
+                total += 1;
+            }
+        }
+        total
+    }
+
+    #[tokio::test]
+    async fn unpaused_scan_completes_without_hanging() {
+        let base = std::env::temp_dir().join(format!("scanner_async_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        fs::write(base.join("a.jpg"), b"x").unwrap();
+        fs::write(base.join("b.jpg"), b"x").unwrap();
+
+        let control = (AtomicBool::new(false), AtomicBool::new(false));
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            walk_with_control(&base, &control),
+        )
+        .await
+        .expect("walk_with_control hung for 5s on an unpaused scan");
+
+        assert_eq!(result, 2);
         let _ = fs::remove_dir_all(&base);
     }
 }
