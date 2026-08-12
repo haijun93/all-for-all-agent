@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FolderScannerService, type ScanProgress } from '../../services/folderScanner';
 import { PhotoLightningIndexer } from '../../services/photoLightningIndexer';
 import { StorageService } from '../../services/storage';
+import { ScanControlService } from '../../services/scanControl';
 import { fileExplorerName, isWindows } from '../../utils/platform';
 import { isTauri } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -14,7 +15,11 @@ import {
   FolderPlus,
   RefreshCw,
   FolderCheck,
-  Check
+  Check,
+  Pause,
+  Play,
+  StopCircle,
+  RotateCcw
 } from 'lucide-react';
 
 interface FolderManagerModalProps {
@@ -30,7 +35,9 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
 }) => {
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastScannedPath, setLastScannedPath] = useState<string | null>(null);
   const [watchedFolders, setWatchedFolders] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('picasa_watched_folders');
@@ -47,6 +54,32 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
 
   if (!isOpen) return null;
 
+  const runNativeScan = async (path: string) => {
+    setErrorMessage(null);
+    setIsScanning(true);
+    setIsPaused(false);
+    ScanControlService.reset();
+    setLastScannedPath(path);
+    try {
+      await PhotoLightningIndexer.scanLocalDirectoryNative(path, (p) => {
+        setProgress(p);
+        if (!p.isScanning) {
+          setIsScanning(false);
+          setIsPaused(false);
+          if (!watchedFolders.includes(p.currentFolder)) {
+            setWatchedFolders((prev) => [...prev, p.currentFolder]);
+          }
+          onScanComplete();
+        }
+      });
+    } catch (err: any) {
+      setErrorMessage('폴더를 스캔하는 중 오류가 발생했습니다: ' + (err?.message || err));
+      setIsScanning(false);
+      setIsPaused(false);
+      setProgress((prev) => (prev ? { ...prev, isScanning: false } : prev));
+    }
+  };
+
   const handleStartNativeScan = async () => {
     setErrorMessage(null);
     setIsScanning(true);
@@ -61,16 +94,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
           title: `${fileExplorerName}에서 인덱싱할 사진 폴더 선택`,
         });
         if (selected && typeof selected === 'string') {
-          await PhotoLightningIndexer.scanLocalDirectoryNative(selected, (p) => {
-            setProgress(p);
-            if (!p.isScanning) {
-              setIsScanning(false);
-              if (!watchedFolders.includes(p.currentFolder)) {
-                setWatchedFolders((prev) => [...prev, p.currentFolder]);
-              }
-              onScanComplete();
-            }
-          });
+          await runNativeScan(selected);
         } else {
           setIsScanning(false);
         }
@@ -99,6 +123,28 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
       setIsScanning(false);
       setProgress((prev) => (prev ? { ...prev, isScanning: false } : prev));
     }
+  };
+
+  const handleTogglePause = async () => {
+    if (isPaused) {
+      await ScanControlService.resume();
+      setIsPaused(false);
+    } else {
+      await ScanControlService.pause();
+      setIsPaused(true);
+    }
+  };
+
+  const handleStopScan = async () => {
+    await ScanControlService.cancel();
+    setIsPaused(false);
+    // scan_directory resolves early once cancelled; the onProgress callback
+    // in runNativeScan will flip isScanning off once that happens.
+  };
+
+  const handleRestartScan = async () => {
+    if (!isTauri() || !lastScannedPath) return;
+    await runNativeScan(lastScannedPath);
   };
 
   const handleFallbackFiles = async (files: FileList) => {
@@ -303,9 +349,15 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#4285f4', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {progress.isScanning ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} color="#34a853" />}
-                  {progress.isScanning ? '인덱싱 진행 중...' : '스캔 완료'}
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: isPaused ? '#eab308' : '#4285f4', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isPaused ? (
+                    <Pause size={14} />
+                  ) : progress.isScanning ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} color="#34a853" />
+                  )}
+                  {isPaused ? '일시 정지됨' : progress.isScanning ? '인덱싱 진행 중...' : '스캔 완료'}
                 </span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                   발견된 사진: {progress.foundImages}장
@@ -314,6 +366,53 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
               <p style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
                 {progress.statusText}
               </p>
+
+              {isTauri() && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  {progress.isScanning ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={handleTogglePause}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          background: isPaused ? '#16a34a' : '#a16207',
+                          border: isPaused ? '1px solid #22c55e' : '1px solid #eab308',
+                          color: '#ffffff',
+                        }}
+                        title={isPaused ? '일시 정지된 인덱싱을 재개합니다' : '진행 중인 인덱싱을 일시 정지합니다'}
+                      >
+                        {isPaused ? <Play size={13} /> : <Pause size={13} />}
+                        <span>{isPaused ? '재개' : '일시 정지'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={handleStopScan}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#dc2626', border: '1px solid #ef4444', color: '#ffffff' }}
+                        title="진행 중인 인덱싱을 즉시 중지합니다"
+                      >
+                        <StopCircle size={13} />
+                        <span>정지</span>
+                      </button>
+                    </>
+                  ) : (
+                    lastScannedPath && (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={handleRestartScan}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#16a34a', border: '1px solid #22c55e', color: '#ffffff' }}
+                        title="같은 폴더를 다시 스캔합니다"
+                      >
+                        <RotateCcw size={13} />
+                        <span>인덱싱 재시작</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           )}
 

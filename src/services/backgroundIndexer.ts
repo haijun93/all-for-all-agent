@@ -7,9 +7,11 @@ import { DocRendererService } from './docRenderer';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { TrayWatcherService } from './trayWatcher';
+import { ScanControlService } from './scanControl';
 
 export interface IndexingStatus {
   isIndexing: boolean;
+  isPaused: boolean;
   currentFileName: string;
   scannedCount: number;
   totalFound: number;
@@ -27,6 +29,7 @@ type DocStreamListener = (newDoc: DocumentItem) => void;
 export class BackgroundIndexer {
   private static status: IndexingStatus = {
     isIndexing: false,
+    isPaused: false,
     currentFileName: '',
     scannedCount: 0,
     totalFound: 0,
@@ -41,6 +44,8 @@ export class BackgroundIndexer {
   private static currentScanId = 0;
   private static lastDirHandle: any = null;
   private static lastFileList: FileList | null = null;
+  private static lastNativePath: string | null = null;
+  private static lastNativeMode: 'lightning' | 'deep' | null = null;
   private static statusListeners = new Set<StatusListener>();
   private static docStreamListeners = new Set<DocStreamListener>();
   private static docBatchListeners = new Set<(batch: DocumentItem[]) => void>();
@@ -65,6 +70,15 @@ export class BackgroundIndexer {
   public static setLastScan(handle: any, fileList: FileList | null): void {
     this.lastDirHandle = handle;
     this.lastFileList = fileList;
+    this.lastNativePath = null;
+    this.lastNativeMode = null;
+  }
+
+  public static setLastNativeScan(path: string, mode: 'lightning' | 'deep'): void {
+    this.lastNativePath = path;
+    this.lastNativeMode = mode;
+    this.lastDirHandle = null;
+    this.lastFileList = null;
   }
 
   public static updateStatus(partial: Partial<IndexingStatus>, force = false): void {
@@ -105,15 +119,40 @@ export class BackgroundIndexer {
 
   public static cancelCurrentScan(): void {
     this.currentScanId++;
+    ScanControlService.cancel();
     this.status.isIndexing = false;
+    this.status.isPaused = false;
     this.status.currentFileName = '🛑 인덱싱 중지됨';
     this.status.statusMessage = '사용자에 의해 인덱싱이 즉시 중지되었습니다.';
     this.flushDocBatch();
     this.notifyStatus(true);
   }
 
+  public static async pauseCurrentScan(): Promise<void> {
+    if (!this.status.isIndexing || this.status.isPaused) return;
+    await ScanControlService.pause();
+    this.status.isPaused = true;
+    this.status.statusMessage = '인덱싱이 일시 중지되었습니다.';
+    this.notifyStatus(true);
+  }
+
+  public static async resumeCurrentScan(): Promise<void> {
+    if (!this.status.isIndexing || !this.status.isPaused) return;
+    await ScanControlService.resume();
+    this.status.isPaused = false;
+    this.status.statusMessage = '인덱싱을 재개합니다...';
+    this.notifyStatus(true);
+  }
+
   public static async resumeOrRestartScan(): Promise<void> {
-    if (this.lastDirHandle) {
+    if (this.lastNativePath) {
+      if (this.lastNativeMode === 'deep') {
+        await this.startDeepScanFromPath(this.lastNativePath);
+      } else {
+        const { LightningIndexer } = await import('./lightningIndexer');
+        await LightningIndexer.lightningscan(this.lastNativePath);
+      }
+    } else if (this.lastDirHandle) {
       await this.startIndexingFromHandle(this.lastDirHandle);
     } else if (this.lastFileList && this.lastFileList.length > 0) {
       await this.startIndexingFromFiles(this.lastFileList);
@@ -121,7 +160,11 @@ export class BackgroundIndexer {
   }
 
   public static canRestartScan(): boolean {
-    return !!this.lastDirHandle || (!!this.lastFileList && this.lastFileList.length > 0);
+    return (
+      !!this.lastNativePath ||
+      !!this.lastDirHandle ||
+      (!!this.lastFileList && this.lastFileList.length > 0)
+    );
   }
 
   public static subscribeStatus(listener: StatusListener): () => void {
@@ -332,13 +375,14 @@ export class BackgroundIndexer {
    */
   public static async startDeepScanFromPath(folderPath: string): Promise<void> {
     const scanId = ++this.currentScanId;
-    this.lastDirHandle = null;
-    this.lastFileList = null;
+    ScanControlService.reset();
+    this.setLastNativeScan(folderPath, 'deep');
 
     const folderName = folderPath.split(/[\/\\]/).pop() || folderPath;
 
     this.status = {
       isIndexing: true,
+      isPaused: false,
       currentFileName: '📦 캐시 및 파일 목록 확인 중...',
       scannedCount: 0,
       totalFound: 0,
@@ -396,6 +440,8 @@ export class BackgroundIndexer {
     let unpersistedBuffer: DocumentItem[] = [];
 
     for (const fileItem of allFiles) {
+      if (this.currentScanId !== scanId) return;
+      await ScanControlService.waitWhilePaused();
       if (this.currentScanId !== scanId) return;
 
       processedCount++;
@@ -489,12 +535,16 @@ export class BackgroundIndexer {
   public static async startIndexingFromHandle(dirHandle: any): Promise<void> {
     this.lastDirHandle = dirHandle;
     this.lastFileList = null;
+    this.lastNativePath = null;
+    this.lastNativeMode = null;
+    ScanControlService.reset();
 
     // Increment scan ID so any previous ongoing scan terminates gracefully
     const scanId = ++this.currentScanId;
 
     this.status = {
       isIndexing: true,
+      isPaused: false,
       currentFileName: '📦 기존 인덱스 캐시 로딩 중...',
       scannedCount: 0,
       totalFound: 0,
@@ -537,6 +587,8 @@ export class BackgroundIndexer {
         if (this.currentScanId !== scanId) return;
 
         for await (const entry of handle.values()) {
+          if (this.currentScanId !== scanId) return;
+          await ScanControlService.waitWhilePaused();
           if (this.currentScanId !== scanId) return;
 
           if (entry.kind === 'file') {
@@ -667,11 +719,15 @@ export class BackgroundIndexer {
   public static async startIndexingFromFiles(files: FileList): Promise<void> {
     this.lastFileList = files;
     this.lastDirHandle = null;
+    this.lastNativePath = null;
+    this.lastNativeMode = null;
+    ScanControlService.reset();
 
     const scanId = ++this.currentScanId;
 
     this.status = {
       isIndexing: true,
+      isPaused: false,
       currentFileName: '📦 기존 인덱스 캐시 로딩 중...',
       scannedCount: 0,
       totalFound: files.length,
@@ -709,6 +765,8 @@ export class BackgroundIndexer {
 
     try {
       for (let i = 0; i < files.length; i++) {
+        if (this.currentScanId !== scanId) return;
+        await ScanControlService.waitWhilePaused();
         if (this.currentScanId !== scanId) return;
 
         const file = files[i];

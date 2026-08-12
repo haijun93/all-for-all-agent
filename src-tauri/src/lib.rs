@@ -9,6 +9,7 @@ mod watcher;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::Manager;
+use scanner::ScanControlState;
 use watcher::WatcherState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,10 +18,14 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
     .manage(WatcherState::default())
+    .manage(ScanControlState::default())
     .invoke_handler(tauri::generate_handler![
       scanner::scan_directory,
       scanner::read_file_binary,
       scanner::open_file_with_default_app,
+      scanner::pause_scan,
+      scanner::resume_scan,
+      scanner::cancel_scan,
       watcher::start_watching,
       watcher::stop_watching,
       indexer::extract_and_analyze,

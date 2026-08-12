@@ -1,7 +1,36 @@
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use walkdir::{DirEntry, WalkDir};
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+
+// Shared pause/cancel flags for the in-progress scan_directory walk. A
+// single global pair is enough since only one scan runs at a time in
+// practice (the user starts one folder scan flow, in either photo or
+// document mode, before starting another) — both modes' Phase-1 scans
+// invoke the same scan_directory command, so this one control surface
+// covers pause/stop/restart for both.
+#[derive(Default)]
+pub struct ScanControlState {
+    paused: AtomicBool,
+    cancelled: AtomicBool,
+}
+
+#[tauri::command]
+pub fn pause_scan(state: State<'_, ScanControlState>) {
+    state.paused.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn resume_scan(state: State<'_, ScanControlState>) {
+    state.paused.store(false, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn cancel_scan(state: State<'_, ScanControlState>) {
+    state.cancelled.store(true, Ordering::Relaxed);
+    state.paused.store(false, Ordering::Relaxed);
+}
 
 // Recycle-bin / trash directory names to skip entirely (whole subtree),
 // so previously-deleted documents never show up as scan results.
@@ -18,14 +47,17 @@ fn is_trash_dir(entry: &DirEntry) -> bool {
 // Name-only check, safe to run during tree traversal (filter_entry) for
 // every directory and file: no filesystem calls, so it can never stall on
 // a slow or cloud-placeholder (OneDrive-style) path. The Windows hidden
-// *attribute* is checked separately in the main scan loop below, only for
-// files that already matched a target extension and already need a
-// metadata() call for size/mtime — reusing that fetch instead of issuing a
-// fresh metadata() call for every single entry in the tree. (An earlier
+// *attribute* on FILES is checked separately in the main scan loop below,
+// only for files that already matched a target extension and already need
+// a metadata() call for size/mtime — reusing that fetch instead of issuing
+// a fresh metadata() call for every single file in the tree. (An earlier
 // version of this filter called metadata() here, inside filter_entry, for
 // every entry regardless of extension — which stalled scans indefinitely
 // on folders containing slow or cloud-placeholder reparse points, since
-// filter_entry runs before any extension match.)
+// filter_entry runs before any extension match.) Hidden-attribute
+// DIRECTORIES are handled by is_hidden_dir_attribute below instead, since
+// directories are far fewer than files and bounding the check to them
+// keeps the same safety property without leaving hidden folders visible.
 fn is_hidden_name(entry: &DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     name.starts_with('.') && name != "." && name != ".."
@@ -41,6 +73,24 @@ fn is_hidden_attribute(metadata: &std::fs::Metadata) -> bool {
 #[cfg(not(target_os = "windows"))]
 fn is_hidden_attribute(_metadata: &std::fs::Metadata) -> bool {
     false
+}
+
+// Windows can mark a folder "hidden" purely via the file attribute (no dot
+// prefix needed), which is how Explorer decides whether to show it with
+// the default "show hidden items" setting off — so a hidden-attribute
+// folder never appears in Explorer even though a raw directory walk can
+// still see it. Checked only for directories (never for files here), so
+// the extra metadata() call is bounded by directory count, not the much
+// larger file count — it can't reintroduce the per-file stall this same
+// filter caused before (see is_hidden_name's comment above).
+fn is_hidden_dir_attribute(entry: &DirEntry) -> bool {
+    if !entry.file_type().is_dir() {
+        return false;
+    }
+    match entry.metadata() {
+        Ok(metadata) => is_hidden_attribute(&metadata),
+        Err(_) => false,
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -65,11 +115,18 @@ const DEFAULT_DOCUMENT_EXTENSIONS: &[&str] = &[
 #[tauri::command]
 pub async fn scan_directory(
     app: AppHandle,
+    control: State<'_, ScanControlState>,
     path: String,
     extensions: Option<Vec<String>>,
 ) -> Result<usize, String> {
     let start = Instant::now();
     let mut total_count = 0;
+
+    // A fresh scan always starts clean, regardless of how the previous one
+    // ended (paused mid-way, stopped, or finished) — this is what makes a
+    // "restart" work correctly by just calling this command again.
+    control.paused.store(false, Ordering::Relaxed);
+    control.cancelled.store(false, Ordering::Relaxed);
 
     let allowed_extensions: Vec<String> = match extensions {
         Some(exts) => exts.into_iter().map(|e| e.to_lowercase()).collect(),
@@ -81,9 +138,26 @@ pub async fn scan_directory(
 
     for entry in WalkDir::new(&path)
         .into_iter()
-        .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
+        .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e) && !is_hidden_dir_attribute(e))
         .filter_map(|e| e.ok())
     {
+        // Cooperative pause/cancel checkpoint, once per entry. Pausing just
+        // idles here without unwinding the walk, so resuming continues
+        // exactly where it left off; cancelling breaks out and returns
+        // whatever was already found.
+        if control.cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        while control.paused.load(Ordering::Relaxed) {
+            if control.cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        }
+        if control.cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+
         if !entry.file_type().is_file() {
             continue;
         }
@@ -201,7 +275,7 @@ mod tests {
         let mut found = vec![];
         for entry in WalkDir::new(&base)
             .into_iter()
-            .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e))
+            .filter_entry(|e| !is_trash_dir(e) && !is_hidden_name(e) && !is_hidden_dir_attribute(e))
             .filter_map(|e| e.ok())
         {
             if entry.file_type().is_file() {

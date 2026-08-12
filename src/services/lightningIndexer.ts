@@ -7,6 +7,7 @@ import { BackgroundIndexer } from './backgroundIndexer';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { TrayWatcherService } from './trayWatcher';
+import { ScanControlService } from './scanControl';
 
 /**
  * ⚡ Lightning Indexer — Everything-style instant file scanning.
@@ -62,6 +63,7 @@ export class LightningIndexer {
     const dirHandle = dirHandleOrPath;
     const scanId = BackgroundIndexer.nextScanId();
     BackgroundIndexer.setLastScan(dirHandle, null);
+    ScanControlService.reset();
 
     console.log(`[LightningIndexer] Starting Web Lightning Scan for '${dirHandle.name}' (Scan ID: ${scanId})`);
 
@@ -111,6 +113,8 @@ export class LightningIndexer {
         if (BackgroundIndexer.getCurrentScanId() !== scanId) return;
 
         for await (const entry of handle.values()) {
+          if (BackgroundIndexer.getCurrentScanId() !== scanId) return;
+          await ScanControlService.waitWhilePaused();
           if (BackgroundIndexer.getCurrentScanId() !== scanId) return;
 
           if (entry.kind === 'file') {
@@ -216,7 +220,8 @@ export class LightningIndexer {
 
   private static async tauriLightningScan(path: string): Promise<void> {
     BackgroundIndexer.nextScanId();
-    BackgroundIndexer.setLastScan(null, null);
+    BackgroundIndexer.setLastNativeScan(path, 'lightning');
+    ScanControlService.reset();
 
     console.log(`[LightningIndexer] Starting Tauri Rust Scan for '${path}'`);
 

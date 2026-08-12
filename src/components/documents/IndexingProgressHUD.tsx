@@ -11,7 +11,9 @@ import {
   FileText,
   StopCircle,
   EyeOff,
-  RotateCcw
+  RotateCcw,
+  Pause,
+  Play
 } from 'lucide-react';
 
 export const IndexingProgressHUD: React.FC = () => {
@@ -42,6 +44,17 @@ export const IndexingProgressHUD: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     await BackgroundIndexer.resumeOrRestartScan();
+  };
+
+  // Handle Pause / Resume Toggle (only meaningful while actively indexing)
+  const handleTogglePause = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (status.isPaused) {
+      await BackgroundIndexer.resumeCurrentScan();
+    } else {
+      await BackgroundIndexer.pauseCurrentScan();
+    }
   };
 
   // Handle Hide / Minimize (작업창 숨기기)
@@ -92,7 +105,9 @@ export const IndexingProgressHUD: React.FC = () => {
         title="클릭하여 작업창 되살리기 (대시보드 확장)"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {status.isIndexing ? (
+          {status.isPaused ? (
+            <Pause size={16} color="#eab308" />
+          ) : status.isIndexing ? (
             <Cpu size={16} color="#3b82f6" className="animate-spin" />
           ) : isCancelled ? (
             <StopCircle size={16} color="#ef4444" />
@@ -100,7 +115,9 @@ export const IndexingProgressHUD: React.FC = () => {
             <CheckCircle2 size={16} color="#22c55e" />
           )}
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ffffff' }}>
-            {status.isIndexing
+            {status.isPaused
+              ? '인덱싱 일시 정지됨'
+              : status.isIndexing
               ? '백그라운드 인덱싱 가동 중'
               : isCancelled
               ? '인덱싱 중지됨'
@@ -198,7 +215,9 @@ export const IndexingProgressHUD: React.FC = () => {
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: status.isIndexing
+              background: status.isPaused
+                ? 'rgba(234, 179, 8, 0.2)'
+                : status.isIndexing
                 ? 'rgba(59, 130, 246, 0.2)'
                 : isCancelled
                 ? 'rgba(239, 68, 68, 0.2)'
@@ -208,7 +227,9 @@ export const IndexingProgressHUD: React.FC = () => {
               justifyContent: 'center',
             }}
           >
-            {status.isIndexing ? (
+            {status.isPaused ? (
+              <Pause size={16} color="#eab308" />
+            ) : status.isIndexing ? (
               <Zap size={16} color="#eab308" />
             ) : isCancelled ? (
               <StopCircle size={16} color="#ef4444" />
@@ -218,7 +239,9 @@ export const IndexingProgressHUD: React.FC = () => {
           </div>
           <div>
             <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
-              {status.isIndexing
+              {status.isPaused
+                ? '인덱싱 일시 정지됨'
+                : status.isIndexing
                 ? '백그라운드 인덱서 가동 중'
                 : isCancelled
                 ? '인덱싱 중지됨'
@@ -361,31 +384,58 @@ export const IndexingProgressHUD: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         <span>소요 시간: {(status.elapsedMs / 1000).toFixed(2)}초</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Stop / Resume Scan Button */}
+          {/* Pause / Resume Toggle + Stop, shown together while indexing */}
           {status.isIndexing ? (
-            <button
-              type="button"
-              onClick={handleStopScan}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '6px 12px',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                color: '#ffffff',
-                background: '#dc2626',
-                border: '1px solid #ef4444',
-                borderRadius: 6,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.4)',
-              }}
-              title="진행 중인 인덱싱을 즉시 중지합니다"
-            >
-              <StopCircle size={13} />
-              <span>스캔 중지</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleTogglePause}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: status.isPaused ? '#16a34a' : '#a16207',
+                  border: status.isPaused ? '1px solid #22c55e' : '1px solid #eab308',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: status.isPaused
+                    ? '0 2px 8px rgba(22, 163, 74, 0.4)'
+                    : '0 2px 8px rgba(161, 98, 7, 0.4)',
+                }}
+                title={status.isPaused ? '일시 정지된 인덱싱을 재개합니다' : '진행 중인 인덱싱을 일시 정지합니다'}
+              >
+                {status.isPaused ? <Play size={13} /> : <Pause size={13} />}
+                <span>{status.isPaused ? '재개' : '일시 정지'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleStopScan}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: '#dc2626',
+                  border: '1px solid #ef4444',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 2px 8px rgba(220, 38, 38, 0.4)',
+                }}
+                title="진행 중인 인덱싱을 즉시 중지합니다"
+              >
+                <StopCircle size={13} />
+                <span>스캔 중지</span>
+              </button>
+            </>
           ) : (
             <button
               type="button"
