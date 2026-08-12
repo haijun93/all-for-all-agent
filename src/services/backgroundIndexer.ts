@@ -344,7 +344,8 @@ export class BackgroundIndexer {
         result.category,
         result.snippet || title,
         dateStr,
-        '작성자'
+        undefined,
+        result.text
       );
 
     return {

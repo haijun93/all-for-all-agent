@@ -73,7 +73,8 @@ export class DocRendererService {
     category: string,
     snippet: string,
     date: string,
-    author?: string
+    author?: string,
+    extractedText?: string
   ): string {
     if (!this.sharedCanvas) {
       this.sharedCanvas = document.createElement('canvas');
@@ -96,18 +97,18 @@ export class DocRendererService {
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 
     if (format === 'pdf') {
-      this.drawPdfFirstPage(ctx, title, category, snippet, date, author);
+      this.drawPdfFirstPage(ctx, title, category, snippet, date, author, extractedText);
     } else if (format === 'xlsx' || format === 'xls') {
-      this.drawExcelFirstPage(ctx, title, category, date);
+      this.drawExcelFirstPage(ctx, title, category, date, extractedText);
     } else if (format === 'hwp' || format === 'hwpx') {
-      this.drawHwpFirstPage(ctx, title, category, snippet, date, author);
+      this.drawHwpFirstPage(ctx, title, category, snippet, date, author, extractedText);
     } else if (format === 'epub') {
       this.drawEpubFirstPage(ctx, title, category, snippet, date, author);
     } else if (format === 'zip' || format === 'cbz') {
       this.drawComicFirstPage(ctx, title, category, snippet, date, author);
     } else {
       // docx, doc, txt, pptx
-      this.drawWordFirstPage(ctx, title, category, snippet, date, author);
+      this.drawWordFirstPage(ctx, title, category, snippet, date, author, extractedText);
     }
 
     return canvas.toDataURL('image/jpeg', 0.82);
@@ -122,7 +123,8 @@ export class DocRendererService {
     category: string,
     snippet: string,
     date: string,
-    author?: string
+    author?: string,
+    extractedText?: string
   ) {
     ctx.fillStyle = '#ea4335';
     ctx.fillRect(0, 0, 380, 8);
@@ -166,14 +168,10 @@ export class DocRendererService {
 
     ctx.fillStyle = '#334155';
     ctx.font = '10px sans-serif';
-    this.wrapText(
-      ctx,
-      '1. 개요 및 배경\n본 문서는 프로젝트의 핵심 요구사항과 기술적 구조, 단계별 추진 일정을 정의하며 이해관계자 간의 원활한 협업과 의사결정을 지원하기 위해 작성되었습니다.\n\n2. 주요 추진 전략\n- 고성능 데이터 파이프라인 구축 및 안정성 확보\n- 사용자 중심의 직관적 인터페이스와 실시간 검색 제공',
-      24,
-      240,
-      332,
-      16
-    );
+    const body = extractedText?.trim()
+      ? this.excerptForThumbnail(extractedText, 420)
+      : '1. 개요 및 배경\n본 문서는 프로젝트의 핵심 요구사항과 기술적 구조, 단계별 추진 일정을 정의하며 이해관계자 간의 원활한 협업과 의사결정을 지원하기 위해 작성되었습니다.\n\n2. 주요 추진 전략\n- 고성능 데이터 파이프라인 구축 및 안정성 확보\n- 사용자 중심의 직관적 인터페이스와 실시간 검색 제공';
+    this.wrapText(ctx, body, 24, 240, 332, 16, 15);
 
     ctx.strokeStyle = '#e2e8f0';
     ctx.strokeRect(24, 495, 332, 0.5);
@@ -191,7 +189,8 @@ export class DocRendererService {
     ctx: CanvasRenderingContext2D,
     title: string,
     category: string,
-    date: string
+    date: string,
+    extractedText?: string
   ) {
     ctx.fillStyle = '#107c41';
     ctx.fillRect(0, 0, 380, 8);
@@ -205,71 +204,64 @@ export class DocRendererService {
     ctx.fillText(`${category} • ${date}`, 20, 50);
 
     const startY = 68;
-    const cols = [35, 105, 65, 65, 70];
-    const colNames = ['No', '항목 / 구분', '단가 (원)', '수량', '합계 (원)'];
 
-    ctx.fillStyle = '#107c41';
-    ctx.fillRect(20, startY, 340, 20);
+    // Real cell grid: our Rust extractor sends the actual first sheet's
+    // rows as tab-separated lines. Fall back to a labeled sample table
+    // only when there's no real data (sampleDocs.ts demo entries).
+    const realRows = (extractedText || '')
+      .split('\n')
+      .map((line) => line.split('\t'))
+      .filter((row) => row.some((c) => c.trim().length > 0));
 
-    let curX = 20;
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 9px sans-serif';
-    colNames.forEach((name, i) => {
-      ctx.fillText(name, curX + 4, startY + 14);
-      curX += cols[i];
-    });
+    const MAX_COLS = 5;
+    const MAX_ROWS = 11;
 
-    const sampleRows = [
-      ['01', '시스템 개발비', '3,500,000', '1식', '3,500,000'],
-      ['02', 'UI/UX 디자인', '1,800,000', '1식', '1,800,000'],
-      ['03', '인덱싱 엔진 구축', '2,400,000', '1식', '2,400,000'],
-      ['04', '클라우드 인프라', '450,000', '12월', '5,400,000'],
-      ['05', '데이터베이스 튜닝', '1,200,000', '1식', '1,200,000'],
-      ['06', '보안 및 권한 검증', '900,000', '1식', '900,000'],
-      ['07', '유지보수 및 운영', '350,000', '12월', '4,200,000'],
-    ];
+    const gridRows: string[][] = realRows.length > 0
+      ? realRows.slice(0, MAX_ROWS).map((row) => row.slice(0, MAX_COLS))
+      : [
+          ['No', '항목 / 구분', '단가 (원)', '수량', '합계 (원)'],
+          ['01', '(실제 데이터 없음)', '-', '-', '-'],
+        ];
 
-    let rowY = startY + 20;
-    sampleRows.forEach((row, rIdx) => {
-      ctx.fillStyle = rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
-      ctx.fillRect(20, rowY, 340, 18);
+    const colCount = Math.max(1, ...gridRows.map((r) => r.length));
+    const colWidth = 340 / colCount;
+
+    let rowY = startY;
+    gridRows.forEach((row, rIdx) => {
+      const isHeaderRow = rIdx === 0;
+      ctx.fillStyle = isHeaderRow ? '#107c41' : rIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      ctx.fillRect(20, rowY, 340, 20);
       ctx.strokeStyle = '#e2e8f0';
       ctx.lineWidth = 1;
-      ctx.strokeRect(20, rowY, 340, 18);
+      ctx.strokeRect(20, rowY, 340, 20);
 
-      let x = 20;
-      ctx.fillStyle = '#334155';
-      ctx.font = '9px sans-serif';
-      row.forEach((val, cIdx) => {
-        ctx.fillText(val, x + 4, rowY + 13);
-        x += cols[cIdx];
-      });
+      ctx.fillStyle = isHeaderRow ? '#ffffff' : '#334155';
+      ctx.font = isHeaderRow ? 'bold 9px sans-serif' : '9px sans-serif';
+      for (let cIdx = 0; cIdx < colCount; cIdx++) {
+        const val = (row[cIdx] || '').trim();
+        const x = 20 + cIdx * colWidth;
+        const clipped = this.truncateToWidth(ctx, val, colWidth - 8);
+        ctx.fillText(clipped, x + 4, rowY + 14);
+        if (cIdx > 0) {
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.beginPath();
+          ctx.moveTo(x, rowY);
+          ctx.lineTo(x, rowY + 20);
+          ctx.stroke();
+        }
+      }
 
-      rowY += 18;
+      rowY += 20;
     });
 
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(20, rowY, 340, 22);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillText('총 합계 금액 (VAT 포함)', 26, rowY + 15);
-    ctx.fillText('₩ 21,900,000', 270, rowY + 15);
-
-    // Mini Chart Graphic
-    ctx.fillStyle = '#f1f5f9';
-    ctx.fillRect(20, rowY + 32, 340, 160);
     ctx.strokeStyle = '#cbd5e1';
-    ctx.strokeRect(20, rowY + 32, 340, 160);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(20, startY, 340, rowY - startY);
 
-    ctx.fillStyle = '#475569';
-    ctx.font = 'bold 9px sans-serif';
-    ctx.fillText('월별 매출 및 지출 추이 그래프 (Sheet1)', 28, rowY + 48);
-
-    const barColors = ['#107c41', '#34a853', '#4285f4', '#fbbc05', '#ea4335'];
-    for (let b = 0; b < 5; b++) {
-      ctx.fillStyle = barColors[b];
-      const h = 30 + b * 18;
-      ctx.fillRect(45 + b * 60, rowY + 175 - h, 34, h);
+    if (realRows.length > MAX_ROWS) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'italic 9px sans-serif';
+      ctx.fillText(`... 외 ${realRows.length - MAX_ROWS}개 행 더 있음`, 20, rowY + 16);
     }
   }
 
@@ -282,7 +274,8 @@ export class DocRendererService {
     category: string,
     snippet: string,
     date: string,
-    author?: string
+    author?: string,
+    extractedText?: string
   ) {
     ctx.fillStyle = '#0055aa';
     ctx.fillRect(0, 0, 380, 8);
@@ -309,55 +302,15 @@ export class DocRendererService {
 
     ctx.fillStyle = '#334155';
     ctx.font = '9px sans-serif';
-    ctx.fillText(`작성부서: ${author || '경영기획팀'}`, 32, 126);
-    ctx.fillText(`기안일자: ${date}`, 235, 126);
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('1. 추진 목적 및 필요성', 24, 160);
+    ctx.fillText(author ? `작성자: ${author}` : '한글(HWP) 문서', 32, 126);
+    ctx.fillText(`작성일자: ${date}`, 235, 126);
 
     ctx.fillStyle = '#334155';
     ctx.font = '10px sans-serif';
-    this.wrapText(
-      ctx,
-      `가. ${snippet}\n나. 관련 부서와의 긴밀한 협력 체계를 구축하고 실시간 의사결정을 강화함.`,
-      28,
-      178,
-      324,
-      15
-    );
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('2. 사업 개요 및 세부 내용', 24, 245);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(24, 260, 332, 105);
-    ctx.strokeStyle = '#94a3b8';
-    ctx.strokeRect(24, 260, 332, 105);
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '10px sans-serif';
-    this.wrapText(
-      ctx,
-      '○ 사업 기간: 2024. 01. 01 ~ 2024. 12. 31 (12개월)\n○ 소요 예산: 금이천일백구십만원정 (₩21,900,000)\n○ 주요 산출물: 완료보고서, 소스코드, 매뉴얼',
-      32,
-      282,
-      316,
-      18
-    );
-
-    // Seal
-    ctx.strokeStyle = '#dc2626';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(285, 410, 50, 50);
-
-    ctx.fillStyle = '#dc2626';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('대표이사', 310, 432);
-    ctx.fillText('직 인', 310, 448);
-    ctx.textAlign = 'left';
+    const body = extractedText?.trim()
+      ? this.excerptForThumbnail(extractedText, 480)
+      : `가. ${snippet}\n나. 관련 부서와의 긴밀한 협력 체계를 구축하고 실시간 의사결정을 강화함.\n\n○ 사업 기간: 미상\n○ 주요 산출물: 미상`;
+    this.wrapText(ctx, body, 28, 150, 324, 16, 21);
   }
 
   /**
@@ -369,7 +322,8 @@ export class DocRendererService {
     category: string,
     snippet: string,
     date: string,
-    author?: string
+    author?: string,
+    extractedText?: string
   ) {
     ctx.fillStyle = '#2b579a';
     ctx.fillRect(0, 0, 380, 8);
@@ -380,7 +334,7 @@ export class DocRendererService {
 
     ctx.fillStyle = '#64748b';
     ctx.font = '10px sans-serif';
-    ctx.fillText(`분류: ${category} | 작성일: ${date}`, 24, 105);
+    ctx.fillText(`분류: ${category} | 작성일: ${date}${author ? ' | ' + author : ''}`, 24, 105);
 
     ctx.strokeStyle = '#2b579a';
     ctx.lineWidth = 1.5;
@@ -389,34 +343,12 @@ export class DocRendererService {
     ctx.lineTo(356, 116);
     ctx.stroke();
 
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText('Article 1. 목적 (Purpose)', 24, 145);
-
     ctx.fillStyle = '#334155';
     ctx.font = '10px sans-serif';
-    this.wrapText(
-      ctx,
-      `${snippet}\n본 조항은 계약 당사자 간의 권리와 의무를 명확히 규정하고 상호 협력하는 것을 목적으로 한다.`,
-      24,
-      165,
-      332,
-      15
-    );
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(24, 370, 332, 95);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.strokeRect(24, 370, 332, 95);
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillText('[서명 및 날인란]', 34, 388);
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(`(갑) 발주사: 주식회사 알파 (대표이사 서명/인)`, 34, 412);
-    ctx.fillText(`(을) 수급사: ${author || '주식회사 베타'} (대표이사 서명/인)`, 34, 436);
+    const body = extractedText?.trim()
+      ? this.excerptForThumbnail(extractedText, 550)
+      : `${snippet}\n본 조항은 계약 당사자 간의 권리와 의무를 명확히 규정하고 상호 협력하는 것을 목적으로 한다.`;
+    this.wrapText(ctx, body, 24, 140, 332, 16, 24);
   }
 
   /**
@@ -662,29 +594,71 @@ export class DocRendererService {
     x: number,
     y: number,
     maxWidth: number,
-    lineHeight: number
+    lineHeight: number,
+    maxLines?: number
   ) {
     const paragraphs = text.split('\n');
     let curY = y;
+    let lineCount = 0;
 
-    for (const para of paragraphs) {
+    // Draws one line, appending an ellipsis and returning false the moment
+    // maxLines is reached, so the caller stops laying out further text.
+    const drawLine = (line: string): boolean => {
+      if (maxLines !== undefined && lineCount >= maxLines) return false;
+      lineCount++;
+      const atLimit = maxLines !== undefined && lineCount >= maxLines;
+      ctx.fillText(atLimit ? line.trimEnd() + ' …' : line, x, curY);
+      curY += lineHeight;
+      return !atLimit;
+    };
+
+    outer: for (const para of paragraphs) {
       const words = para.split(' ');
       let line = '';
 
       for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
+        const testWidth = ctx.measureText(testLine).width;
         if (testWidth > maxWidth && n > 0) {
-          ctx.fillText(line, x, curY);
+          if (!drawLine(line)) break outer;
           line = words[n] + ' ';
-          curY += lineHeight;
         } else {
           line = testLine;
         }
       }
-      ctx.fillText(line, x, curY);
-      curY += lineHeight;
+      if (!drawLine(line)) break outer;
     }
+  }
+
+  /**
+   * Trims raw extracted text down to a reasonable thumbnail-sized excerpt:
+   * collapses runs of whitespace/tabs (common in table-like extractions)
+   * and caps total length so wrapText never has to lay out megabytes of
+   * text for a 380x530 canvas.
+   */
+  private static excerptForThumbnail(text: string, maxChars: number): string {
+    const cleaned = text
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return cleaned.length > maxChars ? cleaned.slice(0, maxChars).trimEnd() + ' …' : cleaned;
+  }
+
+  /** Truncates a single-line string with an ellipsis so it fits maxWidth px. */
+  private static truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let low = 0;
+    let high = text.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const candidate = text.slice(0, mid) + '…';
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return low > 0 ? text.slice(0, low) + '…' : '';
   }
 }
